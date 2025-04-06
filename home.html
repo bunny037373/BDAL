@@ -7,25 +7,54 @@
     body {
       font-family: Arial, sans-serif;
       background: #f4f4f4;
-      padding: 30px;
+      padding: 20px;
       text-align: center;
+    }
+
+    #spectateBanner {
+      display: none;
+      background: #ffc107;
+      color: #000;
+      padding: 10px;
+      margin-bottom: 20px;
     }
 
     h1 {
       margin-bottom: 20px;
     }
 
-    #servers {
-      margin-top: 30px;
-    }
-
     .server {
-      background: #fff;
+      background: white;
       margin: 10px auto;
-      padding: 15px;
+      padding: 10px;
       border-radius: 8px;
       width: 300px;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
       box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+    }
+
+    .server img {
+      width: 40px;
+      height: 40px;
+      border-radius: 50%;
+      margin-right: 10px;
+      object-fit: cover;
+    }
+
+    .button-group {
+      margin: 20px 0;
+    }
+
+    .button-group button {
+      padding: 10px 20px;
+      margin: 5px;
+      font-size: 16px;
+      background: #5865F2;
+      color: white;
+      border: none;
+      border-radius: 6px;
       cursor: pointer;
     }
 
@@ -42,28 +71,25 @@
     .nav button {
       font-size: 16px;
       padding: 10px 20px;
-    }
-
-    #spectateBanner {
-      background: #ffc107;
-      color: #000;
-      padding: 10px;
-      margin-bottom: 15px;
-    }
-
-    .server img {
-      width: 30px;
-      height: 30px;
-      margin-right: 10px;
-      vertical-align: middle;
+      background-color: #5865F2;
+      color: white;
+      border: none;
+      border-radius: 6px;
     }
   </style>
 </head>
 <body>
 
-  <div id="spectateBanner" style="display:none;"></div>
+  <div id="spectateBanner"></div>
   <h1 id="welcomeText">Loading...</h1>
-  <div id="servers">Loading your servers...</div>
+
+  <div class="button-group">
+    <button onclick="createServer()">+ Create Server</button>
+    <button onclick="joinServer()">Join Server</button>
+    <button onclick="location.href='user.html'">Add Friend</button>
+  </div>
+
+  <div id="serverList">Loading servers...</div>
 
   <div class="nav">
     <button onclick="location.href='home.html'">Home</button>
@@ -81,7 +107,9 @@
       collection,
       query,
       where,
-      getDocs
+      getDocs,
+      addDoc,
+      updateDoc
     } from "https://www.gstatic.com/firebasejs/11.6.0/firebase-firestore.js";
 
     const firebaseConfig = {
@@ -98,56 +126,114 @@
     const db = getFirestore(app);
 
     const welcomeText = document.getElementById("welcomeText");
-    const serversDiv = document.getElementById("servers");
+    const serverList = document.getElementById("serverList");
     const spectateBanner = document.getElementById("spectateBanner");
 
     onAuthStateChanged(auth, async (user) => {
       if (!user) return window.location.href = "login.html";
 
       const viewingAs = sessionStorage.getItem("adminViewingAs");
-      const targetUid = viewingAs || user.uid;
+      const uidToUse = viewingAs || user.uid;
 
-      const userDoc = await getDoc(doc(db, "users", targetUid));
-      if (!userDoc.exists()) {
-        welcomeText.textContent = "User not found.";
-        return;
-      }
+      const userDoc = await getDoc(doc(db, "users", uidToUse));
+      const userData = userDoc.data();
+      welcomeText.textContent = `Welcome, ${userData.displayName || "User"}!`;
 
-      const data = userDoc.data();
-      welcomeText.textContent = `Welcome, ${data.displayName || "User"}!`;
-
-      // Show spectating banner
       if (viewingAs) {
-        spectateBanner.textContent = `SPECTATING AS ${data.username || "Unknown"} (Read/Delete Only)`;
+        spectateBanner.textContent = `SPECTATING AS ${userData.username || "Unknown"} (Read/Delete Only)`;
         spectateBanner.style.display = "block";
       }
 
-      loadServers(targetUid);
+      loadServers(uidToUse);
     });
 
     async function loadServers(uid) {
-      const q = query(collection(db, "servers"), where("owner", "==", uid));
-      const querySnapshot = await getDocs(q);
+      const q = query(collection(db, "servers"), where("members", "array-contains", uid));
+      const snapshot = await getDocs(q);
 
-      serversDiv.innerHTML = "";
-      if (querySnapshot.empty) {
-        serversDiv.innerHTML = "<p>No servers found.</p>";
+      serverList.innerHTML = "";
+      if (snapshot.empty) {
+        serverList.innerHTML = "<p>No servers found.</p>";
         return;
       }
 
-      querySnapshot.forEach((docSnap) => {
-        const server = docSnap.data();
+      snapshot.forEach(docSnap => {
+        const data = docSnap.data();
         const div = document.createElement("div");
         div.className = "server";
-        div.innerHTML = `
-          ${server.icon ? `<img src="${server.icon}">` : ""}
-          ${server.name}
-        `;
         div.onclick = () => {
-          sessionStorage.setItem("serverId", docSnap.id);
+          sessionStorage.setItem("currentServer", docSnap.id);
           window.location.href = "server.html";
         };
-        serversDiv.appendChild(div);
+
+        div.innerHTML = `
+          <img src="${data.serverIcon || 'default.png'}" alt="icon">
+          <span>${data.name}</span>
+        `;
+
+        serverList.appendChild(div);
+      });
+    }
+
+    window.createServer = async function () {
+      const name = prompt("Enter server name:");
+      if (!name) return;
+      const authUser = auth.currentUser;
+      const uid = sessionStorage.getItem("adminViewingAs") || authUser.uid;
+      const code = Math.random().toString(36).substring(2, 8).toUpperCase();
+
+      const input = document.createElement("input");
+      input.type = "file";
+      input.accept = "image/*";
+      input.click();
+
+      input.onchange = async () => {
+        let base64 = "";
+        if (input.files.length > 0) {
+          base64 = await toBase64(input.files[0]);
+        }
+
+        await addDoc(collection(db, "servers"), {
+          name,
+          serverIcon: base64,
+          owner: uid,
+          members: [uid],
+          inviteCode: code,
+          createdAt: Date.now()
+        });
+
+        alert("Server created!");
+        location.reload();
+      };
+    };
+
+    window.joinServer = async function () {
+      const code = prompt("Enter invite code:");
+      if (!code) return;
+
+      const q = query(collection(db, "servers"), where("inviteCode", "==", code));
+      const snapshot = await getDocs(q);
+      if (snapshot.empty) return alert("Invalid code.");
+
+      const serverDoc = snapshot.docs[0];
+      const members = serverDoc.data().members || [];
+      const uid = sessionStorage.getItem("adminViewingAs") || auth.currentUser.uid;
+
+      if (!members.includes(uid)) {
+        members.push(uid);
+        await updateDoc(doc(db, "servers", serverDoc.id), { members });
+      }
+
+      alert("Joined server!");
+      location.reload();
+    };
+
+    function toBase64(file) {
+      return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(reader.result);
+        reader.onerror = reject;
+        reader.readAsDataURL(file);
       });
     }
   </script>
