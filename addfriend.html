@@ -44,8 +44,8 @@
 
   <h2>Add a Friend</h2>
   <input type="text" id="usernameInput" placeholder="Enter username">
-  <button onclick="addFriend()">Add Friend</button>
-  <div id="status"></div>
+  <button id="addBtn" disabled>Add Friend</button>
+  <div id="status">Loading...</div>
 
   <script type="module">
     import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.0/firebase-app.js";
@@ -68,18 +68,20 @@
     const db = getFirestore(app);
 
     let currentUserId = null;
+    const status = document.getElementById("status");
+    const addBtn = document.getElementById("addBtn");
 
     onAuthStateChanged(auth, async (user) => {
       if (!user) return location.href = "homescreen.html";
       currentUserId = user.uid;
+      status.textContent = "";
+      addBtn.disabled = false;
     });
 
-    async function addFriend() {
-      const input = document.getElementById("usernameInput");
-      const status = document.getElementById("status");
-      const username = input.value.trim().toLowerCase();
-      status.textContent = "";
+    document.getElementById("addBtn").addEventListener("click", async () => {
+      const username = document.getElementById("usernameInput").value.trim().toLowerCase();
       status.style.color = "white";
+      status.textContent = "";
 
       if (!username) {
         status.style.color = "orange";
@@ -87,10 +89,16 @@
         return;
       }
 
+      if (!currentUserId) {
+        status.style.color = "orange";
+        status.textContent = "Still loading your account. Please wait.";
+        return;
+      }
+
       try {
-        const allUsers = await getDocs(collection(db, "users"));
+        const usersSnap = await getDocs(collection(db, "users"));
         let targetUser = null;
-        allUsers.forEach(docSnap => {
+        usersSnap.forEach(docSnap => {
           const data = docSnap.data();
           if (data.username?.toLowerCase() === username) {
             targetUser = { id: docSnap.id, data };
@@ -109,15 +117,13 @@
           return;
         }
 
-        // Check if you're blocked
-        const blockSnap = await getDoc(doc(db, "users", targetUser.id, "blocked", currentUserId));
-        if (blockSnap.exists()) {
+        const blockedSnap = await getDoc(doc(db, "users", targetUser.id, "blocked", currentUserId));
+        if (blockedSnap.exists()) {
           status.style.color = "red";
-          status.textContent = "Unknown error. You may be blocked.";
+          status.textContent = "You may be blocked. Cannot send request.";
           return;
         }
 
-        // Send the friend request
         await setDoc(doc(db, "users", targetUser.id, "requests", currentUserId), {
           from: currentUserId,
           timestamp: Date.now()
@@ -128,9 +134,9 @@
       } catch (err) {
         console.error(err);
         status.style.color = "red";
-        status.textContent = "Something went wrong. Please try again.";
+        status.textContent = "Something went wrong. Try again.";
       }
-    }
+    });
   </script>
 
 </body>
