@@ -16,17 +16,13 @@
       margin-bottom: 15px;
       border-radius: 8px;
     }
-    .user-card span {
-      display: block;
-      margin: 5px 0;
-    }
     .blurred {
       filter: blur(5px);
       cursor: pointer;
     }
     .btn {
       padding: 5px 10px;
-      margin-right: 5px;
+      margin: 5px;
       background: #5865F2;
       color: white;
       border: none;
@@ -36,32 +32,27 @@
     .danger {
       background: #ff4444;
     }
-    .section {
-      margin-bottom: 40px;
-    }
   </style>
 </head>
 <body>
 
-  <h1>Administration Panel</h1>
+  <h1>Admin Panel</h1>
   <button class="btn" onclick="backToMyAccount()">Back to My Account</button>
 
-  <div class="section">
+  <div style="margin-top: 20px;">
     <h2>Ban a Server</h2>
     <input type="text" id="serverBanId" placeholder="Enter Server ID">
     <button class="btn danger" onclick="banServer()">Ban Server</button>
   </div>
 
-  <div class="section">
-    <h2>All Users</h2>
-    <div id="userList">Loading...</div>
-  </div>
+  <h2>All Users</h2>
+  <div id="userList">Loading...</div>
 
   <script type="module">
     import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.0/firebase-app.js";
     import { getAuth, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.0/firebase-auth.js";
     import {
-      getFirestore, collection, getDocs, updateDoc, doc, deleteDoc, setDoc
+      getFirestore, collection, getDocs, updateDoc, doc, deleteDoc, setDoc, getDoc
     } from "https://www.gstatic.com/firebasejs/11.6.0/firebase-firestore.js";
 
     const firebaseConfig = {
@@ -76,21 +67,29 @@
     const app = initializeApp(firebaseConfig);
     const auth = getAuth(app);
     const db = getFirestore(app);
+
     let originalAdminUid = null;
 
     onAuthStateChanged(auth, async (user) => {
       if (!user) return location.href = "homescreen.html";
 
-      const userDoc = await getDocs(collection(db, "users"));
-      const current = userDoc.docs.find(d => d.id === user.uid);
-      const currentData = current?.data();
+      try {
+        const userRef = doc(db, "users", user.uid);
+        const userSnap = await getDoc(userRef);
 
-      if (!currentData || !currentData.username || !["bunny", "Bunny"].includes(currentData.username)) {
-        return location.href = "homescreen.html";
+        if (!userSnap.exists()) return location.href = "homescreen.html";
+        const userData = userSnap.data();
+
+        if (!userData.username || !["Bunny", "bunny"].includes(userData.username)) {
+          return location.href = "homescreen.html";
+        }
+
+        originalAdminUid = user.uid;
+        loadUsers();
+      } catch (e) {
+        console.error("Failed to load admin:", e);
+        location.href = "homescreen.html";
       }
-
-      originalAdminUid = user.uid;
-      loadUsers();
     });
 
     async function loadUsers() {
@@ -104,17 +103,11 @@
 
         const div = document.createElement("div");
         div.className = "user-card";
-
-        const emailSpan = document.createElement("span");
-        emailSpan.textContent = data.email || "No email";
-        emailSpan.className = "blurred";
-        emailSpan.onclick = () => emailSpan.classList.remove("blurred");
-
         div.innerHTML = `
-          <span><strong>${data.displayName || "User"}</strong></span>
-          <span>Username: ${data.username || "(none)"}</span>
+          <strong>${data.displayName || "User"}</strong><br>
+          Username: ${data.username || "(none)"}<br>
+          <span class="blurred" onclick="this.classList.remove('blurred')">${data.email || "no email"}</span><br>
         `;
-        div.appendChild(emailSpan);
 
         const verifyBtn = document.createElement("button");
         verifyBtn.className = "btn";
@@ -143,14 +136,13 @@
         div.appendChild(banBtn);
         div.appendChild(unbanBtn);
         div.appendChild(spectateBtn);
+
         userList.appendChild(div);
       });
     }
 
     async function toggleVerify(uid, currentStatus) {
-      await updateDoc(doc(db, "users", uid), {
-        verified: !currentStatus
-      });
+      await updateDoc(doc(db, "users", uid), { verified: !currentStatus });
       loadUsers();
     }
 
@@ -165,15 +157,15 @@
     }
 
     window.banServer = async () => {
-      const serverId = document.getElementById("serverBanId").value.trim();
-      if (!serverId) return alert("Enter a Server ID");
-      await setDoc(doc(db, "bannedServers", serverId), { banned: true });
+      const id = document.getElementById("serverBanId").value.trim();
+      if (!id) return alert("Enter server ID");
+      await setDoc(doc(db, "bannedServers", id), { banned: true });
       alert("Server banned.");
     };
 
     window.backToMyAccount = () => {
       sessionStorage.removeItem("adminViewingAs");
-      window.location.href = "home.html";
+      location.href = "home.html";
     };
   </script>
 </body>
