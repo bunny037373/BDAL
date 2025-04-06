@@ -44,7 +44,6 @@
 <body>
 
   <h1>Administration Panel</h1>
-
   <button class="btn" onclick="backToMyAccount()">Back to My Account</button>
 
   <div class="section">
@@ -60,7 +59,7 @@
 
   <script type="module">
     import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.0/firebase-app.js";
-    import { getAuth, signOut, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.0/firebase-auth.js";
+    import { getAuth, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.0/firebase-auth.js";
     import {
       getFirestore, collection, getDocs, updateDoc, doc, deleteDoc, setDoc
     } from "https://www.gstatic.com/firebasejs/11.6.0/firebase-firestore.js";
@@ -81,9 +80,14 @@
 
     onAuthStateChanged(auth, async (user) => {
       if (!user) return location.href = "homescreen.html";
+
       const userDoc = await getDocs(collection(db, "users"));
-      const isAdmin = userDoc.docs.find(doc => doc.id === user.uid && doc.data().role === "admin");
-      if (!isAdmin) return location.href = "homescreen.html";
+      const current = userDoc.docs.find(d => d.id === user.uid);
+      const currentData = current?.data();
+
+      if (!currentData || !currentData.username || !["bunny", "Bunny"].includes(currentData.username)) {
+        return location.href = "homescreen.html";
+      }
 
       originalAdminUid = user.uid;
       loadUsers();
@@ -110,10 +114,8 @@
           <span><strong>${data.displayName || "User"}</strong></span>
           <span>Username: ${data.username || "(none)"}</span>
         `;
-
         div.appendChild(emailSpan);
 
-        // Buttons
         const verifyBtn = document.createElement("button");
         verifyBtn.className = "btn";
         verifyBtn.textContent = data.verified ? "Unverify" : "Verify";
@@ -134,14 +136,13 @@
         spectateBtn.textContent = "Spectate";
         spectateBtn.onclick = () => {
           sessionStorage.setItem("adminViewingAs", userId);
-          window.location.href = "home.html";
+          location.href = "home.html";
         };
 
         div.appendChild(verifyBtn);
         div.appendChild(banBtn);
         div.appendChild(unbanBtn);
         div.appendChild(spectateBtn);
-
         userList.appendChild(div);
       });
     }
