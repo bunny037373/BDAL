@@ -61,7 +61,7 @@
     import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.0/firebase-app.js";
     import { getAuth, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.0/firebase-auth.js";
     import {
-      getFirestore, collection, getDocs, getDoc, doc
+      getFirestore, collection, doc, onSnapshot, getDoc
     } from "https://www.gstatic.com/firebasejs/11.6.0/firebase-firestore.js";
 
     const firebaseConfig = {
@@ -77,51 +77,57 @@
     const auth = getAuth(app);
     const db = getFirestore(app);
 
-    onAuthStateChanged(auth, async (user) => {
+    const friendList = document.getElementById("friendList");
+
+    onAuthStateChanged(auth, (user) => {
       if (!user) return location.href = "homescreen.html";
+      const uid = user.uid;
 
-      const friendList = document.getElementById("friendList");
-      const friendsSnap = await getDocs(collection(db, "users", user.uid, "friends"));
+      const friendsRef = collection(db, "users", uid, "friends");
 
-      if (friendsSnap.empty) {
-        friendList.innerHTML = "<p>You have no friends yet.</p>";
-        return;
-      }
+      onSnapshot(friendsRef, async (snapshot) => {
+        friendList.innerHTML = "";
 
-      friendList.innerHTML = "";
-      for (const docSnap of friendsSnap.docs) {
-        const friendId = docSnap.id;
-        const friendDoc = await getDoc(doc(db, "users", friendId));
-        const friendData = friendDoc.data();
+        if (snapshot.empty) {
+          friendList.innerHTML = "<p>You have no friends yet.</p>";
+          return;
+        }
 
-        const card = document.createElement("div");
-        card.className = "friend-card";
+        for (const docSnap of snapshot.docs) {
+          const friendId = docSnap.id;
+          const friendDoc = await getDoc(doc(db, "users", friendId));
+          const friendData = friendDoc.data();
 
-        const profile = document.createElement("div");
-        profile.className = "friend-profile";
-        profile.onclick = () => {
-          sessionStorage.setItem("viewUser", friendId);
-          window.location.href = "user.html";
-        };
-        profile.innerHTML = `
-          <img src="${friendData.profilePicture || 'default.png'}" alt="pfp">
-          <span>${friendData.displayName || friendData.username || 'Friend'}</span>
-        `;
+          const card = document.createElement("div");
+          card.className = "friend-card";
 
-        const actions = document.createElement("div");
-        actions.className = "friend-actions";
-        const msgBtn = document.createElement("button");
-        msgBtn.textContent = "Message";
-        msgBtn.onclick = () => {
-          sessionStorage.setItem("dmUser", friendId);
-          location.href = "messaging.html";
-        };
+          const profile = document.createElement("div");
+          profile.className = "friend-profile";
+          profile.onclick = () => {
+            sessionStorage.setItem("viewUser", friendId);
+            window.location.href = "user.html";
+          };
 
-        actions.appendChild(msgBtn);
-        card.appendChild(profile);
-        card.appendChild(actions);
-        friendList.appendChild(card);
-      }
+          profile.innerHTML = `
+            <img src="${friendData.profilePicture || 'default.png'}" alt="pfp">
+            <span>${friendData.displayName || friendData.username || 'Friend'}</span>
+          `;
+
+          const actions = document.createElement("div");
+          actions.className = "friend-actions";
+          const msgBtn = document.createElement("button");
+          msgBtn.textContent = "Message";
+          msgBtn.onclick = () => {
+            sessionStorage.setItem("dmUser", friendId);
+            location.href = "messaging.html";
+          };
+
+          actions.appendChild(msgBtn);
+          card.appendChild(profile);
+          card.appendChild(actions);
+          friendList.appendChild(card);
+        }
+      });
     });
   </script>
 
