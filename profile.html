@@ -67,6 +67,7 @@
   <img id="pfpImg" src="default.png" alt="Your Profile Picture"><br>
   <input type="file" id="pfpInput" accept="image/*"><br>
   <input type="text" id="displayName" placeholder="Display Name"><br>
+  <input type="text" id="username" placeholder="Username"><br>
 
   <button onclick="saveProfile()">Save Profile</button>
   <button onclick="logOut()">Logout</button>
@@ -83,7 +84,11 @@
       getFirestore,
       doc,
       getDoc,
-      setDoc
+      setDoc,
+      collection,
+      getDocs,
+      query,
+      where
     } from "https://www.gstatic.com/firebasejs/11.6.0/firebase-firestore.js";
 
     const firebaseConfig = {
@@ -102,6 +107,7 @@
     const userDisplay = document.getElementById("userDisplay");
     const pfpImg = document.getElementById("pfpImg");
     const displayNameInput = document.getElementById("displayName");
+    const usernameInput = document.getElementById("username");
     const pfpInput = document.getElementById("pfpInput");
 
     let currentUser = null;
@@ -121,12 +127,19 @@
         const data = userDoc.data();
         if (data.profilePicture) pfpImg.src = data.profilePicture;
         if (data.displayName) displayNameInput.value = data.displayName;
+        if (data.username) usernameInput.value = data.username;
       }
     });
 
     window.saveProfile = async function () {
       const displayName = displayNameInput.value.trim();
+      const username = usernameInput.value.trim().toLowerCase();
       let imageData = pfpImg.src;
+
+      if (!username) {
+        alert("Username is required.");
+        return;
+      }
 
       if (pfpInput.files.length > 0) {
         const file = pfpInput.files[0];
@@ -134,11 +147,23 @@
         pfpImg.src = imageData;
       }
 
-      if (!currentUser) return;
+      // Check if username is taken (except by yourself)
+      const usersRef = collection(db, "users");
+      const q = query(usersRef, where("username", "==", username));
+      const snapshot = await getDocs(q);
+
+      if (!snapshot.empty) {
+        const takenByAnother = snapshot.docs.some(docSnap => docSnap.id !== currentUser.uid);
+        if (takenByAnother) {
+          alert("This username is already taken. Please choose another.");
+          return;
+        }
+      }
 
       await setDoc(doc(db, "users", currentUser.uid), {
         email: currentUser.email,
         displayName: displayName || "User",
+        username: username,
         profilePicture: imageData
       });
 
