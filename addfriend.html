@@ -1,0 +1,112 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Add Friend</title>
+  <style>
+    body {
+      background-color: #2c2f33;
+      color: white;
+      font-family: Arial, sans-serif;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding-top: 100px;
+    }
+    h2 {
+      margin-bottom: 20px;
+    }
+    input {
+      padding: 10px;
+      border-radius: 5px;
+      border: none;
+      width: 300px;
+      font-size: 16px;
+    }
+    button {
+      margin-top: 15px;
+      padding: 10px 20px;
+      background-color: #5865F2;
+      color: white;
+      border: none;
+      border-radius: 5px;
+      font-size: 16px;
+      cursor: pointer;
+    }
+    #status {
+      margin-top: 15px;
+      font-size: 14px;
+      color: #ff6666;
+    }
+  </style>
+</head>
+<body>
+
+  <h2>Add a Friend</h2>
+  <input type="text" id="usernameInput" placeholder="Enter username">
+  <button onclick="addFriend()">Add Friend</button>
+  <div id="status"></div>
+
+  <script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.0/firebase-app.js";
+    import { getAuth, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.0/firebase-auth.js";
+    import {
+      getFirestore, collection, getDocs, doc, setDoc, getDoc
+    } from "https://www.gstatic.com/firebasejs/11.6.0/firebase-firestore.js";
+
+    const firebaseConfig = {
+      apiKey: "AIzaSyCGGosrc7Ikl1xPnZri5sHuMvEUBB1f2YU",
+      authDomain: "mydiscordclone-fc2be.firebaseapp.com",
+      projectId: "mydiscordclone-fc2be",
+      storageBucket: "mydiscordclone-fc2be.appspot.com",
+      messagingSenderId: "599134697544",
+      appId: "1:599134697544:web:0961e501044324e52b807d"
+    };
+
+    const app = initializeApp(firebaseConfig);
+    const auth = getAuth(app);
+    const db = getFirestore(app);
+    let currentUserId = null;
+
+    onAuthStateChanged(auth, async (user) => {
+      if (!user) return location.href = "homescreen.html";
+      currentUserId = user.uid;
+    });
+
+    async function addFriend() {
+      const username = document.getElementById("usernameInput").value.trim();
+      const status = document.getElementById("status");
+      status.textContent = "";
+
+      if (!username) {
+        status.textContent = "Please enter a username.";
+        return;
+      }
+
+      const usersSnap = await getDocs(collection(db, "users"));
+      const targetUserDoc = usersSnap.docs.find(doc => {
+        const data = doc.data();
+        return data.username === username;
+      });
+
+      if (!targetUserDoc) {
+        status.textContent = "Oops, something went wrong. User not found.";
+        return;
+      }
+
+      const targetUserId = targetUserDoc.id;
+      const targetData = targetUserDoc.data();
+
+      // Store request in their "requests" subcollection
+      await setDoc(doc(db, "users", targetUserId, "requests", currentUserId), {
+        from: currentUserId,
+        timestamp: Date.now()
+      });
+
+      status.style.color = "lightgreen";
+      status.textContent = `Friend request sent to ${targetData.displayName || username}!`;
+    }
+  </script>
+
+</body>
+</html>
