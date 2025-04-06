@@ -36,7 +36,6 @@
     #status {
       margin-top: 15px;
       font-size: 14px;
-      color: #ff6666;
     }
   </style>
 </head>
@@ -51,7 +50,7 @@
     import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.0/firebase-app.js";
     import { getAuth, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.0/firebase-auth.js";
     import {
-      getFirestore, collection, getDocs, doc, setDoc, getDoc
+      getFirestore, collection, getDocs, doc, setDoc
     } from "https://www.gstatic.com/firebasejs/11.6.0/firebase-firestore.js";
 
     const firebaseConfig = {
@@ -66,7 +65,9 @@
     const app = initializeApp(firebaseConfig);
     const auth = getAuth(app);
     const db = getFirestore(app);
+
     let currentUserId = null;
+    let currentUserData = null;
 
     onAuthStateChanged(auth, async (user) => {
       if (!user) return location.href = "homescreen.html";
@@ -74,37 +75,44 @@
     });
 
     async function addFriend() {
-      const username = document.getElementById("usernameInput").value.trim();
+      const input = document.getElementById("usernameInput");
       const status = document.getElementById("status");
+      const enteredUsername = input.value.trim().toLowerCase();
       status.textContent = "";
 
-      if (!username) {
+      if (!enteredUsername) {
+        status.style.color = "orange";
         status.textContent = "Please enter a username.";
         return;
       }
 
       const usersSnap = await getDocs(collection(db, "users"));
-      const targetUserDoc = usersSnap.docs.find(doc => {
+      const targetDoc = usersSnap.docs.find(doc => {
         const data = doc.data();
-        return data.username === username;
+        return data.username?.toLowerCase() === enteredUsername;
       });
 
-      if (!targetUserDoc) {
-        status.textContent = "Oops, something went wrong. User not found.";
+      if (!targetDoc) {
+        status.style.color = "red";
+        status.textContent = "Oops, something went wrong. Username not found.";
         return;
       }
 
-      const targetUserId = targetUserDoc.id;
-      const targetData = targetUserDoc.data();
+      const targetUserId = targetDoc.id;
 
-      // Store request in their "requests" subcollection
+      if (targetUserId === currentUserId) {
+        status.style.color = "orange";
+        status.textContent = "You can't add yourself.";
+        return;
+      }
+
       await setDoc(doc(db, "users", targetUserId, "requests", currentUserId), {
         from: currentUserId,
         timestamp: Date.now()
       });
 
       status.style.color = "lightgreen";
-      status.textContent = `Friend request sent to ${targetData.displayName || username}!`;
+      status.textContent = "Friend request sent!";
     }
   </script>
 
