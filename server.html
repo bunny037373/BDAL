@@ -1,119 +1,134 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8">
+  <meta charset="UTF-8" />
   <title>Server</title>
   <style>
     body {
       font-family: Arial, sans-serif;
-      background: #f4f4f4;
       margin: 0;
-      padding: 0;
+      background: #f4f4f4;
     }
 
-    .header, .input-box {
-      padding: 15px;
+    .header {
       background: #5865F2;
       color: white;
+      padding: 15px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+    }
+
+    .header h2 {
+      margin: 0;
     }
 
     .chat-box {
       padding: 15px;
-      max-height: 60vh;
+      max-height: 50vh;
       overflow-y: auto;
     }
 
     .message {
       background: white;
-      padding: 10px;
-      margin-bottom: 10px;
       border-radius: 8px;
+      margin-bottom: 10px;
+      padding: 10px;
+      display: flex;
+      gap: 10px;
+      align-items: center;
       position: relative;
+    }
+
+    .profile-pic {
+      width: 40px;
+      height: 40px;
+      border-radius: 50%;
+      cursor: pointer;
+    }
+
+    .content {
+      flex: 1;
     }
 
     .message-meta {
       font-size: 12px;
-      color: #555;
+      color: gray;
     }
 
     .message button {
-      position: absolute;
-      top: 10px;
-      right: 10px;
       background: transparent;
       border: none;
-      color: #888;
       cursor: pointer;
-    }
-
-    .controls {
-      background: #ddd;
-      padding: 10px;
-    }
-
-    .controls input, .controls button {
-      margin: 5px;
+      color: gray;
     }
 
     .input-box {
+      display: flex;
+      padding: 10px;
+      background: #ddd;
       position: fixed;
       bottom: 0;
       width: 100%;
-      display: flex;
-      background: #ddd;
     }
 
     .input-box input {
       flex: 1;
       padding: 10px;
-      font-size: 16px;
     }
 
     .input-box button {
       padding: 10px 20px;
       background: #5865F2;
-      border: none;
       color: white;
-      font-size: 16px;
+      border: none;
       cursor: pointer;
     }
 
-    .channel-select {
-      padding: 5px;
-      margin: 10px 0;
+    .admin-panel {
+      padding: 10px;
+      background: #eee;
+    }
+
+    .admin-panel input {
+      margin: 4px;
+    }
+
+    .channel-switcher {
+      margin: 8px 0;
     }
 
     .role {
-      margin-top: 5px;
-      padding: 4px 8px;
-      border-radius: 4px;
       display: inline-block;
+      padding: 3px 6px;
+      border-radius: 4px;
+      font-size: 12px;
+      margin-left: 6px;
       color: white;
     }
   </style>
 </head>
 <body>
-
   <div class="header">
-    <h2 id="serverTitle">Server Name</h2>
+    <h2 id="serverName">Server</h2>
     <button onclick="editServer()">Edit Server</button>
-    <button onclick="createChannel()">+ New Channel</button>
-    <select id="channelSelector" class="channel-select" onchange="switchChannel(this.value)">
-    </select>
+    <button onclick="createChannel()">+ Channel</button>
+    <button onclick="createVoiceChannel()">+ Voice Channel</button>
+    <select id="channelSelect" class="channel-switcher" onchange="switchChannel(this.value)"></select>
   </div>
 
-  <div id="chatBox" class="chat-box">Loading messages...</div>
+  <div id="chatBox" class="chat-box">Loading...</div>
 
-  <div class="controls" id="adminControls" style="display:none;">
-    <input type="text" id="roleName" placeholder="Role Name">
-    <input type="color" id="roleColor">
+  <div class="admin-panel" id="adminControls" style="display:none;">
+    <input id="roleName" placeholder="Role Name" />
+    <input type="color" id="roleColor" />
     <button onclick="createRole()">Create Role</button>
-    <input type="text" id="customInvite" placeholder="Custom Invite Code">
+    <input id="inviteCode" placeholder="Custom Invite Code" />
     <button onclick="generateInvite()">Generate Invite</button>
   </div>
 
   <div class="input-box">
-    <input type="text" id="messageInput" placeholder="Message...">
+    <input type="text" id="messageInput" placeholder="Message..." />
     <button onclick="sendMessage()">Send</button>
   </div>
 
@@ -147,26 +162,23 @@
     const auth = getAuth(app);
     const db = getFirestore(app);
 
-    const chatBox = document.getElementById("chatBox");
-    const serverTitle = document.getElementById("serverTitle");
-    const messageInput = document.getElementById("messageInput");
-    const channelSelector = document.getElementById("channelSelector");
-    const adminControls = document.getElementById("adminControls");
-
     const serverId = sessionStorage.getItem("currentServer");
     const viewingAs = sessionStorage.getItem("adminViewingAs");
     let currentUser, currentUid, currentChannel = "general", isOwner = false, isAdmin = false, isVerified = false;
+
+    const serverName = document.getElementById("serverName");
+    const chatBox = document.getElementById("chatBox");
+    const channelSelect = document.getElementById("channelSelect");
+    const adminControls = document.getElementById("adminControls");
+    const messageInput = document.getElementById("messageInput");
 
     onAuthStateChanged(auth, async (user) => {
       if (!user) return location.href = "login.html";
       currentUser = user;
       currentUid = viewingAs || user.uid;
 
-      const [userDoc, serverDoc] = await Promise.all([
-        getDoc(doc(db, "users", currentUid)),
-        getDoc(doc(db, "servers", serverId))
-      ]);
-
+      const userDoc = await getDoc(doc(db, "users", currentUid));
+      const serverDoc = await getDoc(doc(db, "servers", serverId));
       const userData = userDoc.data();
       const serverData = serverDoc.data();
 
@@ -174,60 +186,83 @@
       isAdmin = userData.role === "admin";
       isVerified = userData.verified === true;
 
-      serverTitle.textContent = serverData.name;
       if (isOwner || isAdmin) adminControls.style.display = "block";
+
+      serverName.textContent = serverData.name || "Unnamed Server";
 
       loadChannels();
       loadMessages();
     });
 
     async function loadChannels() {
-      const q = query(collection(db, "servers", serverId, "channels"));
-      const snap = await getDocs(q);
+      const snap = await getDocs(collection(db, "servers", serverId, "channels"));
+      channelSelect.innerHTML = "";
       snap.forEach(doc => {
         const opt = document.createElement("option");
         opt.value = doc.id;
         opt.textContent = doc.id;
-        channelSelector.appendChild(opt);
+        channelSelect.appendChild(opt);
       });
     }
 
-    function switchChannel(channel) {
-      currentChannel = channel;
+    function switchChannel(name) {
+      currentChannel = name;
       loadMessages();
     }
 
     function loadMessages() {
       const q = query(collection(db, "servers", serverId, "channels", currentChannel, "messages"), orderBy("timestamp"));
-      onSnapshot(q, (snapshot) => {
+      onSnapshot(q, async (snapshot) => {
         chatBox.innerHTML = "";
-        snapshot.forEach(docSnap => {
-          const msg = docSnap.data();
+        snapshot.forEach(async (msgDoc) => {
+          const msg = msgDoc.data();
           const div = document.createElement("div");
           div.className = "message";
 
+          const userDoc = await getDoc(doc(db, "users", msg.sender));
+          const userData = userDoc.data();
+          const img = document.createElement("img");
+          img.src = userData?.profilePicture || "default.png";
+          img.className = "profile-pic";
+          img.onclick = () => {
+            sessionStorage.setItem("viewUserId", msg.sender);
+            window.location.href = "user.html";
+          };
+
+          const content = document.createElement("div");
+          content.className = "content";
+
           const date = new Date(msg.timestamp).toLocaleString();
-          div.innerHTML = `
-            <div><strong>${msg.displayName}</strong> ${msg.roleName ? `<span class="role" style="background:${msg.roleColor}">${msg.roleName}</span>` : ""}</div>
+          content.innerHTML = `
+            <div><b style="cursor:pointer;" onclick="sessionStorage.setItem('viewUserId','${msg.sender}');location.href='user.html';">
+              ${msg.displayName}
+            </b>
+            ${msg.roleName ? `<span class="role" style="background:${msg.roleColor}">${msg.roleName}</span>` : ""}</div>
             <div>${msg.text}</div>
             <div class="message-meta">${date}</div>
           `;
 
-          const canDelete = msg.sender === currentUid || isOwner || isAdmin;
+          div.appendChild(img);
+          div.appendChild(content);
+
+          const canDelete = isAdmin || isOwner || msg.sender === currentUid;
           const canEdit = msg.sender === currentUid;
 
           if (canDelete) {
-            const delBtn = document.createElement("button");
-            delBtn.textContent = "🗑";
-            delBtn.onclick = () => deleteMessage(docSnap.id);
-            div.appendChild(delBtn);
+            const del = document.createElement("button");
+            del.textContent = "🗑";
+            del.onclick = () => deleteDoc(doc(db, "servers", serverId, "channels", currentChannel, "messages", msgDoc.id));
+            div.appendChild(del);
           }
 
           if (canEdit) {
-            const editBtn = document.createElement("button");
-            editBtn.textContent = "✏️";
-            editBtn.onclick = () => editMessage(docSnap.id, msg.text);
-            div.appendChild(editBtn);
+            const edit = document.createElement("button");
+            edit.textContent = "✏️";
+            edit.onclick = () => {
+              const newText = prompt("Edit:", msg.text);
+              if (newText) updateDoc(doc(db, "servers", serverId, "channels", currentChannel, "messages", msgDoc.id), { text: newText });
+            };
+            div.appendChild(edit);
           }
 
           chatBox.appendChild(div);
@@ -235,79 +270,74 @@
       });
     }
 
-    window.sendMessage = async function () {
-      const text = messageInput.value.trim();
-      if (!text) return;
-
+    window.sendMessage = async () => {
+      const txt = messageInput.value.trim();
+      if (!txt) return;
       const userDoc = await getDoc(doc(db, "users", currentUid));
-      const { displayName, roleName, roleColor } = userDoc.data();
+      const { displayName, profilePicture, roleName, roleColor } = userDoc.data();
 
       await addDoc(collection(db, "servers", serverId, "channels", currentChannel, "messages"), {
-        text,
+        text: txt,
         displayName,
-        roleName: roleName || null,
-        roleColor: roleColor || null,
         sender: currentUid,
-        timestamp: Date.now()
+        timestamp: Date.now(),
+        roleName: roleName || null,
+        roleColor: roleColor || null
       });
 
       messageInput.value = "";
     };
 
-    async function deleteMessage(id) {
-      await deleteDoc(doc(db, "servers", serverId, "channels", currentChannel, "messages", id));
-    }
-
-    async function editMessage(id, oldText) {
-      const newText = prompt("Edit message:", oldText);
-      if (newText) {
-        await updateDoc(doc(db, "servers", serverId, "channels", currentChannel, "messages", id), {
-          text: newText
-        });
-      }
-    }
-
-    window.editServer = async function () {
-      if (!isOwner) return alert("Only the owner can edit the server.");
+    window.editServer = async () => {
+      if (!isOwner) return;
       const newName = prompt("New server name:");
-      if (!newName) return;
-      await updateDoc(doc(db, "servers", serverId), { name: newName });
-      serverTitle.textContent = newName;
+      if (newName) {
+        await updateDoc(doc(db, "servers", serverId), { name: newName });
+        serverName.textContent = newName;
+      }
     };
 
-    window.createChannel = async function () {
-      const name = prompt("New channel name:");
-      if (!name) return;
-      await setDoc(doc(db, "servers", serverId, "channels", name), {});
-      const opt = document.createElement("option");
-      opt.value = name;
-      opt.textContent = name;
-      channelSelector.appendChild(opt);
+    window.createChannel = async () => {
+      const name = prompt("Channel name:");
+      if (name) {
+        await setDoc(doc(db, "servers", serverId, "channels", name), {});
+        const opt = document.createElement("option");
+        opt.value = name;
+        opt.textContent = name;
+        channelSelect.appendChild(opt);
+      }
     };
 
-    window.createRole = async function () {
-      const name = document.getElementById("roleName").value.trim();
+    window.createVoiceChannel = async () => {
+      const name = prompt("Voice channel name:");
+      if (name) {
+        await setDoc(doc(db, "servers", serverId, "channels", name), { voice: true });
+        const opt = document.createElement("option");
+        opt.value = name;
+        opt.textContent = name + " (VC)";
+        channelSelect.appendChild(opt);
+      }
+    };
+
+    window.createRole = async () => {
+      const name = document.getElementById("roleName").value;
       const color = document.getElementById("roleColor").value;
-      if (!name) return alert("Role name required");
-
+      if (!name) return;
       await updateDoc(doc(db, "users", currentUid), {
         roleName: name,
         roleColor: color
       });
-
       alert("Role set!");
     };
 
-    window.generateInvite = async function () {
-      if (!isOwner || !isVerified) return alert("Only verified owners can create custom invites.");
-      const code = document.getElementById("customInvite").value.trim();
-      if (!code) return alert("Code required");
-
+    window.generateInvite = async () => {
+      if (!isOwner || !isVerified) return alert("Only verified owners can do that.");
+      const code = document.getElementById("inviteCode").value.trim();
+      if (!code) return;
       await updateDoc(doc(db, "servers", serverId), {
         inviteCode: code
       });
-
-      alert(`Invite created: ${location.origin}/join.html?code=${code}`);
+      alert(`Invite: ${location.origin}/join.html?code=${code}`);
     };
   </script>
 </body>
