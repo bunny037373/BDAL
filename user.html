@@ -6,83 +6,67 @@
   <style>
     body {
       font-family: Arial, sans-serif;
+      background: #2c2f33;
+      color: white;
       text-align: center;
-      background: #f4f4f4;
-      padding-top: 40px;
+      padding-top: 50px;
     }
-
     img {
       width: 100px;
       height: 100px;
       border-radius: 50%;
-      object-fit: cover;
-      border: 2px solid #ccc;
-      margin-bottom: 15px;
+      border: 2px solid #fff;
     }
-
     .info {
+      margin: 10px 0;
       font-size: 18px;
-      margin-bottom: 10px;
     }
-
-    .badge {
-      display: inline-block;
-      padding: 3px 8px;
-      font-size: 12px;
-      border-radius: 12px;
-      margin-left: 5px;
-    }
-
-    .verified { background: #1da1f2; color: white; }
-    .admin { background: #dc3545; color: white; }
-    .developer { background: #28a745; color: white; }
-    .status { font-weight: bold; margin-bottom: 10px; }
-
-    .buttons {
-      margin-top: 15px;
-    }
-
     button {
+      margin: 8px;
       padding: 10px 20px;
-      font-size: 16px;
-      margin: 5px;
+      font-size: 15px;
       border: none;
-      border-radius: 6px;
+      border-radius: 5px;
       cursor: pointer;
     }
-
-    .active { background-color: #5865F2; color: white; }
-    .disabled { background-color: #bbb; color: #eee; cursor: not-allowed; }
-    .friend-status { margin-top: 10px; font-weight: bold; }
+    .disabled {
+      background: gray;
+      color: #bbb;
+      cursor: not-allowed;
+    }
+    .active {
+      background-color: #7289DA;
+      color: white;
+    }
+    .blocked {
+      color: #ff4444;
+      margin-top: 10px;
+    }
   </style>
 </head>
 <body>
-  <h2>User Profile</h2>
-  <img id="profilePic" src="default.png" alt="Profile Picture">
-  <div class="info" id="displayName">Display Name: Loading...</div>
-  <div class="info" id="username">Username: Loading...</div>
-  <div class="status" id="onlineStatus">Status: Checking...</div>
-  <div class="friend-status" id="friendStatus"></div>
 
-  <div class="buttons">
-    <button id="addFriendBtn" onclick="addFriend()">Add Friend</button>
-    <button id="messageBtn" onclick="messageUser()">Message</button>
-    <button id="reportBtn" onclick="reportUser()">Report</button>
-    <button id="unfriendBtn" onclick="unfriendUser()">Unfriend</button>
-    <button id="blockBtn" onclick="blockUser()">Block</button>
+  <h2>User Profile</h2>
+  <img id="profilePic" src="default.png" alt="Profile Picture"><br>
+  <div class="info" id="displayName">Loading...</div>
+  <div class="info" id="username">Username: ...</div>
+  <div class="info" id="status">Checking status...</div>
+
+  <div id="actions">
+    <button id="addFriendBtn" class="active" onclick="addFriend()">Add Friend</button>
+    <button id="messageBtn" class="active" onclick="messageUser()">Message</button>
+    <button id="reportBtn" class="active" onclick="reportUser()">Report</button>
+    <button id="blockBtn" class="active" onclick="blockUser()">Block</button>
+    <button id="unblockBtn" class="active" onclick="unblockUser()" style="display:none;">Unblock</button>
   </div>
+
+  <div class="blocked" id="blockNote"></div>
 
   <script type="module">
     import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.0/firebase-app.js";
     import { getAuth, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.0/firebase-auth.js";
     import {
-      getFirestore,
-      doc,
-      getDoc,
-      setDoc,
-      updateDoc,
-      deleteDoc,
-      collection
+      getFirestore, doc, getDoc, setDoc, deleteDoc
     } from "https://www.gstatic.com/firebasejs/11.6.0/firebase-firestore.js";
 
     const firebaseConfig = {
@@ -99,167 +83,65 @@
     const db = getFirestore(app);
 
     const viewUserId = sessionStorage.getItem("viewUserId");
-    const profilePic = document.getElementById("profilePic");
-    const displayNameDiv = document.getElementById("displayName");
-    const usernameDiv = document.getElementById("username");
-    const addFriendBtn = document.getElementById("addFriendBtn");
-    const messageBtn = document.getElementById("messageBtn");
-    const reportBtn = document.getElementById("reportBtn");
-    const unfriendBtn = document.getElementById("unfriendBtn");
-    const blockBtn = document.getElementById("blockBtn");
-    const friendStatus = document.getElementById("friendStatus");
-    const onlineStatus = document.getElementById("onlineStatus");
+    let currentUser;
 
-    let currentUser = null;
-    let viewedUserData = null;
+    const pic = document.getElementById("profilePic");
+    const displayName = document.getElementById("displayName");
+    const username = document.getElementById("username");
+    const status = document.getElementById("status");
+    const blockBtn = document.getElementById("blockBtn");
+    const unblockBtn = document.getElementById("unblockBtn");
+    const blockNote = document.getElementById("blockNote");
 
     onAuthStateChanged(auth, async (user) => {
-      if (!user) return window.location.href = "login.html";
+      if (!user || !viewUserId) return location.href = "home.html";
       currentUser = user;
-
-      if (viewUserId === currentUser.uid) disableAllButtons();
 
       const userDoc = await getDoc(doc(db, "users", viewUserId));
       if (userDoc.exists()) {
-        viewedUserData = userDoc.data();
-        profilePic.src = viewedUserData.profilePicture || "default.png";
-
-        let name = `Display Name: ${viewedUserData.displayName || "N/A"}`;
-        let uname = `Username: ${viewedUserData.username || "N/A"}`;
-
-        if (viewedUserData.verified) name += `<span class="badge verified">✔ Verified</span>`;
-        if (viewedUserData.role === "admin") uname += `<span class="badge admin">Admin</span>`;
-        if (viewedUserData.role === "developer") uname += `<span class="badge developer">Dev</span>`;
-
-        displayNameDiv.innerHTML = name;
-        usernameDiv.innerHTML = uname;
-
-        checkOnlineStatus(viewedUserData.lastOnline);
-        checkBlockStatus();
+        const data = userDoc.data();
+        pic.src = data.profilePicture || "default.png";
+        displayName.textContent = data.displayName || "Display Name";
+        username.textContent = "Username: " + (data.username || "unknown");
       }
+
+      checkBlockStatus();
     });
 
-    function disableAllButtons() {
-      [addFriendBtn, messageBtn, reportBtn, unfriendBtn, blockBtn].forEach(btn => {
-        btn.disabled = true;
-        btn.className = "disabled";
-      });
-    }
-
-    async function checkOnlineStatus(lastOnline) {
-      if (!lastOnline) return onlineStatus.textContent = "Status: Unknown";
-      const diff = Date.now() - lastOnline;
-      onlineStatus.textContent = diff < 300000 ? "Status: Online" : "Status: Offline";
-    }
-
     async function checkBlockStatus() {
-      const blockedRef = doc(db, "users", currentUser.uid, "blocked", viewUserId);
-      const blockedSnap = await getDoc(blockedRef);
-      if (blockedSnap.exists()) {
-        friendStatus.textContent = "You have blocked this user.";
-        disableAllButtons();
+      const blockRef = doc(db, "users", currentUser.uid, "blocked", viewUserId);
+      const snap = await getDoc(blockRef);
+      if (snap.exists()) {
+        status.textContent = "Blocked";
+        blockNote.textContent = "You have blocked this user.";
+        blockBtn.style.display = "none";
+        unblockBtn.style.display = "inline-block";
       } else {
-        checkFriendStatus();
+        status.textContent = "Active";
+        blockNote.textContent = "";
+        blockBtn.style.display = "inline-block";
+        unblockBtn.style.display = "none";
       }
     }
 
-    async function checkFriendStatus() {
-      const myDoc = await getDoc(doc(db, "users", currentUser.uid, "friends", viewUserId));
-      const theirDoc = await getDoc(doc(db, "users", viewUserId, "friends", currentUser.uid));
-
-      if (myDoc.exists() && myDoc.data().status === "accepted") {
-        friendStatus.textContent = "You are friends";
-        addFriendBtn.style.display = "none";
-        unfriendBtn.style.display = "inline-block";
-      } else if (myDoc.exists() && myDoc.data().status === "pending") {
-        friendStatus.textContent = "Friend request sent";
-        addFriendBtn.textContent = "Pending...";
-        addFriendBtn.disabled = true;
-        addFriendBtn.className = "disabled";
-        unfriendBtn.style.display = "none";
-      } else {
-        addFriendBtn.style.display = "inline-block";
-        unfriendBtn.style.display = "none";
-      }
-
-      if (theirDoc.exists() && theirDoc.data().status === "pending" && theirDoc.data().sender !== currentUser.uid) {
-        friendStatus.innerHTML = `${viewedUserData.username} sent you a friend request`;
-        const acceptBtn = document.createElement("button");
-        acceptBtn.textContent = "Accept";
-        acceptBtn.onclick = acceptFriend;
-        const ignoreBtn = document.createElement("button");
-        ignoreBtn.textContent = "Ignore";
-        ignoreBtn.onclick = ignoreFriend;
-        friendStatus.appendChild(document.createElement("br"));
-        friendStatus.appendChild(acceptBtn);
-        friendStatus.appendChild(ignoreBtn);
-      }
-    }
-
-    window.addFriend = async function () {
-      await setDoc(doc(db, "users", currentUser.uid, "friends", viewUserId), {
-        status: "pending",
-        sender: currentUser.uid,
-        timestamp: Date.now()
-      });
-      await setDoc(doc(db, "users", viewUserId, "friends", currentUser.uid), {
-        status: "pending",
-        sender: currentUser.uid,
-        timestamp: Date.now()
-      });
-      addFriendBtn.textContent = "Pending...";
-      addFriendBtn.disabled = true;
-      friendStatus.textContent = "Friend request sent.";
-    };
-
-    window.acceptFriend = async function () {
-      await updateDoc(doc(db, "users", currentUser.uid, "friends", viewUserId), { status: "accepted" });
-      await updateDoc(doc(db, "users", viewUserId, "friends", currentUser.uid), { status: "accepted" });
-      friendStatus.textContent = "You are now friends!";
-      addFriendBtn.style.display = "none";
-      unfriendBtn.style.display = "inline-block";
-    };
-
-    window.ignoreFriend = async function () {
-      await deleteDoc(doc(db, "users", currentUser.uid, "friends", viewUserId));
-      await deleteDoc(doc(db, "users", viewUserId, "friends", currentUser.uid));
-      friendStatus.textContent = "Friend request ignored.";
-    };
-
-    window.unfriendUser = async function () {
-      await deleteDoc(doc(db, "users", currentUser.uid, "friends", viewUserId));
-      await deleteDoc(doc(db, "users", viewUserId, "friends", currentUser.uid));
-      alert("Unfriended.");
-      friendStatus.textContent = "";
-      addFriendBtn.style.display = "inline-block";
-      unfriendBtn.style.display = "none";
-    };
-
-    window.blockUser = async function () {
+    window.blockUser = async () => {
       await setDoc(doc(db, "users", currentUser.uid, "blocked", viewUserId), {
         timestamp: Date.now()
       });
-      alert("User blocked.");
-      disableAllButtons();
-      friendStatus.textContent = "You have blocked this user.";
+      checkBlockStatus();
     };
 
-    window.messageUser = function () {
+    window.unblockUser = async () => {
+      await deleteDoc(doc(db, "users", currentUser.uid, "blocked", viewUserId));
+      checkBlockStatus();
+    };
+
+    window.addFriend = () => alert("Friend logic coming soon!");
+    window.messageUser = () => {
       sessionStorage.setItem("dmUser", viewUserId);
-      window.location.href = "messaging.html";
+      location.href = "messaging.html";
     };
-
-    window.reportUser = async function () {
-      const reason = prompt("Why are you reporting this user?");
-      if (!reason) return;
-      await setDoc(doc(db, "reports", `${currentUser.uid}_${viewUserId}`), {
-        reporterUid: currentUser.uid,
-        reportedUid: viewUserId,
-        reason,
-        timestamp: Date.now()
-      });
-      alert("Report submitted.");
-    };
+    window.reportUser = () => alert("Reported.");
   </script>
 </body>
 </html>
