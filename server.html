@@ -4,61 +4,85 @@
   <meta charset="UTF-8">
   <title>Server</title>
   <style>
-    body { margin: 0; font-family: Arial, sans-serif; display: flex; height: 100vh; }
-    #channelList {
-      width: 200px;
-      background: #2f3136;
-      color: white;
-      padding: 15px;
-      overflow-y: auto;
+    body {
+      font-family: Arial, sans-serif;
+      background: #f4f4f4;
+      margin: 0;
+      padding: 0;
     }
-    #channelList button {
-      width: 100%;
-      margin: 5px 0;
-      padding: 8px;
-      background: #40444b;
-      color: white;
-      border: none;
-      cursor: pointer;
-      border-radius: 4px;
-    }
-    .main { flex: 1; display: flex; flex-direction: column; }
-    #messageList {
-      flex: 1;
-      padding: 20px;
-      overflow-y: auto;
-      background: #f0f0f0;
-    }
-    .input-area {
-      display: flex;
-      padding: 10px;
-      background: #ddd;
-    }
-    .input-area input {
-      flex: 1;
-      padding: 10px;
-    }
-    .input-area button {
-      padding: 10px 20px;
+
+    .server-header {
       background: #5865F2;
       color: white;
+      padding: 15px;
+      text-align: center;
+    }
+
+    .chat-box {
+      padding: 20px;
+      max-height: 70vh;
+      overflow-y: auto;
+    }
+
+    .message {
+      background: white;
+      padding: 10px;
+      margin-bottom: 10px;
+      border-radius: 8px;
+      position: relative;
+    }
+
+    .message-meta {
+      font-size: 12px;
+      color: #555;
+    }
+
+    .message button {
+      position: absolute;
+      top: 10px;
+      right: 10px;
+      background: transparent;
       border: none;
+      color: #999;
+      cursor: pointer;
+      font-size: 14px;
+    }
+
+    .input-box {
+      display: flex;
+      padding: 15px;
+      background: #ddd;
+      position: fixed;
+      bottom: 0;
+      width: 100%;
+    }
+
+    .input-box input {
+      flex: 1;
+      padding: 10px;
+      border: none;
+      border-radius: 6px;
+      font-size: 16px;
+    }
+
+    .input-box button {
+      padding: 10px 20px;
+      margin-left: 10px;
+      background: #5865F2;
+      border: none;
+      color: white;
+      border-radius: 6px;
+      cursor: pointer;
     }
   </style>
 </head>
 <body>
-  <div id="channelList">
-    <h3>Channels</h3>
-    <button id="addChannelBtn" onclick="addChannel()" style="display:none;">+ Add Channel</button>
-    <button id="inviteBtn" onclick="showInviteCode()" style="display:none;">Invite</button>
-    <div id="channelButtons"></div>
-  </div>
-  <div class="main">
-    <div id="messageList">Select a channel to view messages.</div>
-    <div class="input-area">
-      <input id="messageInput" placeholder="Type your message..." />
-      <button onclick="sendMessage()">Send</button>
-    </div>
+  <div class="server-header" id="serverName">Loading server...</div>
+  <div class="chat-box" id="chatBox">Loading messages...</div>
+
+  <div class="input-box">
+    <input type="text" id="messageInput" placeholder="Type a message..." />
+    <button onclick="sendMessage()">Send</button>
   </div>
 
   <script type="module">
@@ -68,11 +92,14 @@
       getFirestore,
       doc,
       getDoc,
-      collection,
+      setDoc,
       addDoc,
-      onSnapshot,
+      collection,
       query,
-      orderBy
+      orderBy,
+      onSnapshot,
+      deleteDoc,
+      updateDoc
     } from "https://www.gstatic.com/firebasejs/11.6.0/firebase-firestore.js";
 
     const firebaseConfig = {
@@ -88,128 +115,101 @@
     const auth = getAuth(app);
     const db = getFirestore(app);
 
-    const serverId = sessionStorage.getItem("currentServer");
-    let currentChannel = null;
-    let currentUser = null;
-    let userCache = {};
+    const chatBox = document.getElementById("chatBox");
+    const serverName = document.getElementById("serverName");
+    const messageInput = document.getElementById("messageInput");
 
-    const messageList = document.getElementById("messageList");
+    const serverId = sessionStorage.getItem("currentServer");
+    const viewingAs = sessionStorage.getItem("adminViewingAs");
+    let currentUser, currentUid, serverOwner = null, isAdmin = false;
 
     onAuthStateChanged(auth, async (user) => {
-      if (!user) return (window.location.href = "login.html");
+      if (!user) return window.location.href = "login.html";
       currentUser = user;
+      currentUid = viewingAs || user.uid;
 
-      const serverRef = doc(db, "servers", serverId);
-      const serverSnap = await getDoc(serverRef);
-      const serverData = serverSnap.data();
+      const userDoc = await getDoc(doc(db, "users", currentUid));
+      isAdmin = userDoc.data()?.role === "admin";
 
-      if (user.uid === serverData.owner) {
-        document.getElementById("addChannelBtn").style.display = "block";
-        document.getElementById("inviteBtn").style.display = "block";
-      }
+      const serverDoc = await getDoc(doc(db, "servers", serverId));
+      const serverData = serverDoc.data();
+      serverOwner = serverData.owner;
+      serverName.textContent = serverData.name || "Unnamed Server";
 
-      loadChannels();
+      loadMessages();
     });
 
-    async function loadChannels() {
-      const channelsRef = collection(db, "servers", serverId, "channels");
-      onSnapshot(channelsRef, (snapshot) => {
-        document.getElementById("channelButtons").innerHTML = "";
-        snapshot.forEach((docSnap) => {
-          const channel = docSnap.data();
-          const btn = document.createElement("button");
-          btn.textContent = channel.name;
-          btn.onclick = () => selectChannel(docSnap.id);
-          document.getElementById("channelButtons").appendChild(btn);
+    function loadMessages() {
+      const q = query(collection(db, "servers", serverId, "messages"), orderBy("timestamp"));
+      onSnapshot(q, (snapshot) => {
+        chatBox.innerHTML = "";
+        snapshot.forEach((doc) => {
+          const msg = doc.data();
+          const div = document.createElement("div");
+          div.className = "message";
+
+          const date = new Date(msg.timestamp).toLocaleString();
+          div.innerHTML = `
+            <div><strong>${msg.displayName || "User"}</strong></div>
+            <div>${msg.text}</div>
+            <div class="message-meta">${date}</div>
+          `;
+
+          // Permissions for editing/deleting
+          const canEdit = msg.sender === currentUid;
+          const canDelete = msg.sender === currentUid || currentUid === serverOwner;
+
+          if (canDelete && !isAdmin) {
+            const deleteBtn = document.createElement("button");
+            deleteBtn.innerHTML = "🗑";
+            deleteBtn.onclick = () => deleteMessage(doc.id);
+            div.appendChild(deleteBtn);
+          }
+
+          if (canEdit && !isAdmin) {
+            const editBtn = document.createElement("button");
+            editBtn.innerHTML = "✏️";
+            editBtn.onclick = () => editMessage(doc.id, msg.text);
+            div.appendChild(editBtn);
+          }
+
+          chatBox.appendChild(div);
+          chatBox.scrollTop = chatBox.scrollHeight;
         });
       });
     }
 
-    async function selectChannel(channelId) {
-      currentChannel = channelId;
-      messageList.innerHTML = "";
-      const messagesRef = collection(db, "servers", serverId, "channels", currentChannel, "messages");
-      const q = query(messagesRef, orderBy("timestamp", "asc"));
-      onSnapshot(q, async (snapshot) => {
-        messageList.innerHTML = "";
-        for (const docSnap of snapshot.docs) {
-          const msg = docSnap.data();
-          const userId = msg.userId;
-
-          if (!userCache[userId]) {
-            const userDoc = await getDoc(doc(db, "users", userId));
-            userCache[userId] = userDoc.exists() ? userDoc.data() : { displayName: "Unknown", profilePicture: "default.png" };
-          }
-
-          const userData = userCache[userId];
-
-          const msgDiv = document.createElement("div");
-          msgDiv.style.display = "flex";
-          msgDiv.style.alignItems = "center";
-          msgDiv.style.marginBottom = "10px";
-
-          const img = document.createElement("img");
-          img.src = userData.profilePicture || "default.png";
-          img.style.width = "40px";
-          img.style.height = "40px";
-          img.style.borderRadius = "50%";
-          img.style.marginRight = "10px";
-          img.style.cursor = "pointer";
-          img.onclick = () => viewUserProfile(userId);
-
-          const textBlock = document.createElement("div");
-          const name = document.createElement("strong");
-          name.textContent = userData.displayName || "User";
-          name.style.cursor = "pointer";
-          name.onclick = () => viewUserProfile(userId);
-
-          const text = document.createElement("p");
-          text.textContent = msg.text;
-          text.style.margin = "3px 0";
-
-          textBlock.appendChild(name);
-          textBlock.appendChild(text);
-          msgDiv.appendChild(img);
-          msgDiv.appendChild(textBlock);
-          messageList.appendChild(msgDiv);
-        }
-        messageList.scrollTop = messageList.scrollHeight;
-      });
-    }
-
-    function viewUserProfile(uid) {
-      sessionStorage.setItem("viewUserId", uid);
-      window.location.href = "user.html";
-    }
-
     window.sendMessage = async function () {
-      const input = document.getElementById("messageInput");
-      const text = input.value.trim();
-      if (!text || !currentChannel) return;
+      const text = messageInput.value.trim();
+      if (!text) return;
 
-      await addDoc(collection(db, "servers", serverId, "channels", currentChannel, "messages"), {
+      const userDoc = await getDoc(doc(db, "users", currentUid));
+      const displayName = userDoc.data().displayName || "User";
+
+      await addDoc(collection(db, "servers", serverId, "messages"), {
+        sender: currentUid,
+        displayName,
         text,
-        userId: currentUser.uid,
         timestamp: Date.now()
       });
 
-      input.value = "";
+      messageInput.value = "";
     };
 
-    window.addChannel = async function () {
-      const name = prompt("Channel name?");
-      if (!name) return;
+    async function deleteMessage(messageId) {
+      if (confirm("Delete this message?")) {
+        await deleteDoc(doc(db, "servers", serverId, "messages", messageId));
+      }
+    }
 
-      await addDoc(collection(db, "servers", serverId, "channels"), {
-        name
-      });
-    };
-
-    window.showInviteCode = async function () {
-      const serverDoc = await getDoc(doc(db, "servers", serverId));
-      const code = serverDoc.data().inviteCode;
-      prompt("Share this invite code:", code);
-    };
+    async function editMessage(messageId, oldText) {
+      const newText = prompt("Edit your message:", oldText);
+      if (newText !== null && newText.trim() !== "") {
+        await updateDoc(doc(db, "servers", serverId, "messages", messageId), {
+          text: newText.trim()
+        });
+      }
+    }
   </script>
 </body>
 </html>
