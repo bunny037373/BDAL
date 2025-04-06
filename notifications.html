@@ -1,1 +1,153 @@
 
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Notifications</title>
+  <style>
+    body {
+      background: #2c2f33;
+      color: white;
+      font-family: Arial, sans-serif;
+      padding: 20px;
+    }
+
+    h2 {
+      text-align: center;
+    }
+
+    .request-card {
+      background: #36393f;
+      border-radius: 8px;
+      padding: 15px;
+      margin: 10px auto;
+      width: 90%;
+      max-width: 400px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    .profile {
+      display: flex;
+      align-items: center;
+      cursor: pointer;
+    }
+
+    .profile img {
+      width: 40px;
+      height: 40px;
+      border-radius: 50%;
+      margin-right: 10px;
+      object-fit: cover;
+    }
+
+    .actions button {
+      margin-left: 10px;
+      padding: 6px 12px;
+      border: none;
+      border-radius: 5px;
+      cursor: pointer;
+      font-size: 14px;
+    }
+
+    .accept {
+      background: #43b581;
+      color: white;
+    }
+
+    .deny {
+      background: #f04747;
+      color: white;
+    }
+  </style>
+</head>
+<body>
+
+  <h2>Friend Requests</h2>
+  <div id="requestList">Loading...</div>
+
+  <script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.0/firebase-app.js";
+    import { getAuth, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.0/firebase-auth.js";
+    import {
+      getFirestore, collection, getDocs, doc, getDoc, setDoc, deleteDoc, updateDoc
+    } from "https://www.gstatic.com/firebasejs/11.6.0/firebase-firestore.js";
+
+    const firebaseConfig = {
+      apiKey: "AIzaSyCGGosrc7Ikl1xPnZri5sHuMvEUBB1f2YU",
+      authDomain: "mydiscordclone-fc2be.firebaseapp.com",
+      projectId: "mydiscordclone-fc2be",
+      storageBucket: "mydiscordclone-fc2be.appspot.com",
+      messagingSenderId: "599134697544",
+      appId: "1:599134697544:web:0961e501044324e52b807d"
+    };
+
+    const app = initializeApp(firebaseConfig);
+    const auth = getAuth(app);
+    const db = getFirestore(app);
+
+    onAuthStateChanged(auth, async (user) => {
+      if (!user) return location.href = "homescreen.html";
+
+      const list = document.getElementById("requestList");
+      const reqSnap = await getDocs(collection(db, "users", user.uid, "requests"));
+      if (reqSnap.empty) {
+        list.innerHTML = "<p>No friend requests.</p>";
+        return;
+      }
+
+      list.innerHTML = "";
+      for (const docSnap of reqSnap.docs) {
+        const fromId = docSnap.id;
+        const fromUserDoc = await getDoc(doc(db, "users", fromId));
+        const fromData = fromUserDoc.data();
+
+        const card = document.createElement("div");
+        card.className = "request-card";
+
+        const profile = document.createElement("div");
+        profile.className = "profile";
+        profile.onclick = () => {
+          sessionStorage.setItem("viewUser", fromId);
+          window.location.href = "user.html";
+        };
+        profile.innerHTML = `
+          <img src="${fromData.profilePicture || 'default.png'}" alt="PFP">
+          <span>${fromData.username || 'Unknown'}</span>
+        `;
+
+        const actions = document.createElement("div");
+        actions.className = "actions";
+
+        const acceptBtn = document.createElement("button");
+        acceptBtn.className = "accept";
+        acceptBtn.textContent = "Accept";
+        acceptBtn.onclick = async () => {
+          // Add both users to each other's friends collection
+          await setDoc(doc(db, "users", user.uid, "friends", fromId), { uid: fromId });
+          await setDoc(doc(db, "users", fromId, "friends", user.uid), { uid: user.uid });
+          await deleteDoc(doc(db, "users", user.uid, "requests", fromId));
+          card.remove();
+        };
+
+        const denyBtn = document.createElement("button");
+        denyBtn.className = "deny";
+        denyBtn.textContent = "Deny";
+        denyBtn.onclick = async () => {
+          await deleteDoc(doc(db, "users", user.uid, "requests", fromId));
+          card.remove();
+        };
+
+        actions.appendChild(acceptBtn);
+        actions.appendChild(denyBtn);
+
+        card.appendChild(profile);
+        card.appendChild(actions);
+        list.appendChild(card);
+      }
+    });
+  </script>
+
+</body>
+</html>
