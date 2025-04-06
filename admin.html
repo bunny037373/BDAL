@@ -6,74 +6,63 @@
   <style>
     body {
       font-family: Arial, sans-serif;
-      background: #f4f4f4;
-      padding: 30px;
-      text-align: center;
+      background: #2c2f33;
+      color: white;
+      padding: 20px;
     }
-
-    .user-card, .report-card {
-      background: white;
-      margin: 15px auto;
+    .user-card {
+      background: #36393F;
       padding: 15px;
+      margin-bottom: 15px;
       border-radius: 8px;
-      width: 340px;
-      box-shadow: 0 2px 5px rgba(0,0,0,0.1);
     }
-
-    .user-card p, .report-card p {
+    .user-card span {
+      display: block;
       margin: 5px 0;
     }
-
-    .blur {
+    .blurred {
       filter: blur(5px);
       cursor: pointer;
     }
-
-    button {
-      margin: 5px;
-      padding: 8px 14px;
-      font-size: 14px;
+    .btn {
+      padding: 5px 10px;
+      margin-right: 5px;
+      background: #5865F2;
+      color: white;
       border: none;
-      border-radius: 5px;
+      border-radius: 4px;
       cursor: pointer;
     }
-
-    .verify-btn { background: #28a745; color: white; }
-    .unverify-btn { background: #ffc107; color: black; }
-    .ban-btn { background: #dc3545; color: white; }
-    .login-btn { background: #007bff; color: white; }
-    .role-btn { background: #6c757d; color: white; }
-    .show-reports-btn { background: #343a40; color: white; margin-bottom: 20px; }
-    #backBtn {
-      background: #444;
-      color: white;
-      padding: 10px 20px;
-      border: none;
-      border-radius: 6px;
-      cursor: pointer;
-      margin-bottom: 20px;
+    .danger {
+      background: #ff4444;
+    }
+    .section {
+      margin-bottom: 40px;
     }
   </style>
 </head>
 <body>
 
-  <button id="backBtn" onclick="goBackToAdmin()">Back to My Account</button>
-  <h2>Admin Panel</h2>
-  <button class="show-reports-btn" onclick="toggleReports()">View Reports</button>
-  <div id="userList">Loading users...</div>
-  <div id="reportList" style="display:none;"><h3>All Reports</h3></div>
+  <h1>Administration Panel</h1>
+
+  <button class="btn" onclick="backToMyAccount()">Back to My Account</button>
+
+  <div class="section">
+    <h2>Ban a Server</h2>
+    <input type="text" id="serverBanId" placeholder="Enter Server ID">
+    <button class="btn danger" onclick="banServer()">Ban Server</button>
+  </div>
+
+  <div class="section">
+    <h2>All Users</h2>
+    <div id="userList">Loading...</div>
+  </div>
 
   <script type="module">
     import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.0/firebase-app.js";
-    import { getAuth, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.0/firebase-auth.js";
+    import { getAuth, signOut, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.0/firebase-auth.js";
     import {
-      getFirestore,
-      collection,
-      getDocs,
-      doc,
-      updateDoc,
-      deleteDoc,
-      getDoc
+      getFirestore, collection, getDocs, updateDoc, doc, deleteDoc, setDoc
     } from "https://www.gstatic.com/firebasejs/11.6.0/firebase-firestore.js";
 
     const firebaseConfig = {
@@ -88,130 +77,101 @@
     const app = initializeApp(firebaseConfig);
     const auth = getAuth(app);
     const db = getFirestore(app);
-    const userList = document.getElementById("userList");
-    const reportList = document.getElementById("reportList");
-
-    let adminUid = null;
+    let originalAdminUid = null;
 
     onAuthStateChanged(auth, async (user) => {
-      if (!user) return window.location.href = "login.html";
-      adminUid = user.uid;
+      if (!user) return location.href = "homescreen.html";
+      const userDoc = await getDocs(collection(db, "users"));
+      const isAdmin = userDoc.docs.find(doc => doc.id === user.uid && doc.data().role === "admin");
+      if (!isAdmin) return location.href = "homescreen.html";
 
-      const userDoc = await getDoc(doc(db, "users", user.uid));
-      const data = userDoc.data();
-      if (!data || (data.username || "").toLowerCase() !== "bunny") {
-        alert("Access denied.");
-        return window.location.href = "home.html";
-      }
-
+      originalAdminUid = user.uid;
       loadUsers();
-      loadReports();
     });
 
     async function loadUsers() {
-      const snapshot = await getDocs(collection(db, "users"));
+      const usersSnap = await getDocs(collection(db, "users"));
+      const userList = document.getElementById("userList");
       userList.innerHTML = "";
 
-      snapshot.forEach((docSnap) => {
+      usersSnap.forEach(docSnap => {
         const data = docSnap.data();
-        const uid = docSnap.id;
+        const userId = docSnap.id;
 
         const div = document.createElement("div");
         div.className = "user-card";
 
-        const emailEl = document.createElement("p");
-        emailEl.innerHTML = `<strong>Email:</strong> <span class="blur" onclick="this.classList.toggle('blur')">${data.email || "N/A"}</span>`;
-
-        const verifyBtn = document.createElement("button");
-        verifyBtn.textContent = data.verified ? "Unverify" : "Verify";
-        verifyBtn.className = data.verified ? "unverify-btn" : "verify-btn";
-        verifyBtn.onclick = () => toggleVerify(uid, data.verified);
-
-        const roleBtn = document.createElement("button");
-        roleBtn.textContent = data.role === "developer" ? "Remove Developer" : "Make Developer";
-        roleBtn.className = "role-btn";
-        roleBtn.onclick = () => toggleDeveloper(uid, data.role);
-
-        const loginBtn = document.createElement("button");
-        loginBtn.textContent = "Account Login";
-        loginBtn.className = "login-btn";
-        loginBtn.onclick = () => spectateAs(uid);
-
-        const banBtn = document.createElement("button");
-        banBtn.textContent = "Ban";
-        banBtn.className = "ban-btn";
-        banBtn.onclick = () => banUser(uid);
+        const emailSpan = document.createElement("span");
+        emailSpan.textContent = data.email || "No email";
+        emailSpan.className = "blurred";
+        emailSpan.onclick = () => emailSpan.classList.remove("blurred");
 
         div.innerHTML = `
-          <p><strong>Username:</strong> ${data.username || "N/A"}</p>
-          <p><strong>Display Name:</strong> ${data.displayName || "N/A"}</p>
+          <span><strong>${data.displayName || "User"}</strong></span>
+          <span>Username: ${data.username || "(none)"}</span>
         `;
-        div.appendChild(emailEl);
+
+        div.appendChild(emailSpan);
+
+        // Buttons
+        const verifyBtn = document.createElement("button");
+        verifyBtn.className = "btn";
+        verifyBtn.textContent = data.verified ? "Unverify" : "Verify";
+        verifyBtn.onclick = () => toggleVerify(userId, data.verified);
+
+        const banBtn = document.createElement("button");
+        banBtn.className = "btn danger";
+        banBtn.textContent = "Ban";
+        banBtn.onclick = () => banUser(userId, data.email);
+
+        const unbanBtn = document.createElement("button");
+        unbanBtn.className = "btn";
+        unbanBtn.textContent = "Unban";
+        unbanBtn.onclick = () => unbanUser(data.email);
+
+        const spectateBtn = document.createElement("button");
+        spectateBtn.className = "btn";
+        spectateBtn.textContent = "Spectate";
+        spectateBtn.onclick = () => {
+          sessionStorage.setItem("adminViewingAs", userId);
+          window.location.href = "home.html";
+        };
+
         div.appendChild(verifyBtn);
-        div.appendChild(roleBtn);
-        div.appendChild(loginBtn);
         div.appendChild(banBtn);
+        div.appendChild(unbanBtn);
+        div.appendChild(spectateBtn);
+
         userList.appendChild(div);
       });
     }
 
-    async function loadReports() {
-      const reportsSnapshot = await getDocs(collection(db, "reports"));
-      const userSnapshot = await getDocs(collection(db, "users"));
-      const users = {};
-
-      userSnapshot.forEach(doc => users[doc.id] = doc.data());
-
-      reportList.innerHTML = '<h3>All Reports</h3>';
-      reportsSnapshot.forEach(doc => {
-        const data = doc.data();
-        const reporter = users[data.reporterUid]?.username || "Unknown";
-        const reported = users[data.reportedUid]?.username || "Unknown";
-
-        const div = document.createElement("div");
-        div.className = "report-card";
-        div.innerHTML = `
-          <p><strong>Reporter:</strong> ${reporter}</p>
-          <p><strong>Reported:</strong> ${reported}</p>
-          <p><strong>Reason:</strong> ${data.reason || "No reason"}</p>
-          <p><small>${new Date(data.timestamp).toLocaleString()}</small></p>
-        `;
-        reportList.appendChild(div);
+    async function toggleVerify(uid, currentStatus) {
+      await updateDoc(doc(db, "users", uid), {
+        verified: !currentStatus
       });
+      loadUsers();
     }
 
-    window.toggleReports = function () {
-      reportList.style.display = reportList.style.display === "none" ? "block" : "none";
+    async function banUser(uid, email) {
+      await setDoc(doc(db, "bannedEmails", email), { banned: true });
+      alert("User banned.");
+    }
+
+    async function unbanUser(email) {
+      await deleteDoc(doc(db, "bannedEmails", email));
+      alert("User unbanned.");
+    }
+
+    window.banServer = async () => {
+      const serverId = document.getElementById("serverBanId").value.trim();
+      if (!serverId) return alert("Enter a Server ID");
+      await setDoc(doc(db, "bannedServers", serverId), { banned: true });
+      alert("Server banned.");
     };
 
-    window.toggleVerify = async function (uid, currentStatus) {
-      await updateDoc(doc(db, "users", uid), { verified: !currentStatus });
-      loadUsers();
-    };
-
-    window.toggleDeveloper = async function (uid, currentRole) {
-      const newRole = currentRole === "developer" ? "" : "developer";
-      await updateDoc(doc(db, "users", uid), { role: newRole });
-      loadUsers();
-    };
-
-    window.banUser = async function (uid) {
-      if (confirm("Are you sure you want to ban this user?")) {
-        await deleteDoc(doc(db, "users", uid));
-        alert("User banned.");
-        loadUsers();
-      }
-    };
-
-    window.spectateAs = function (uid) {
-      sessionStorage.setItem("adminViewingAs", uid);
-      alert("Now spectating this user.");
-      window.location.href = "home.html";
-    };
-
-    window.goBackToAdmin = function () {
+    window.backToMyAccount = () => {
       sessionStorage.removeItem("adminViewingAs");
-      alert("Back to your account.");
       window.location.href = "home.html";
     };
   </script>
