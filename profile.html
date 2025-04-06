@@ -40,10 +40,6 @@
       margin-top: 10px;
     }
 
-    button:hover {
-      background-color: #4752c4;
-    }
-
     .nav {
       position: fixed;
       bottom: 0;
@@ -58,6 +54,15 @@
       font-size: 16px;
       padding: 10px 20px;
     }
+
+    .verified-badge {
+      background-color: #1da1f2;
+      color: white;
+      border-radius: 50%;
+      padding: 3px 6px;
+      font-size: 14px;
+      margin-left: 5px;
+    }
   </style>
 </head>
 <body>
@@ -71,6 +76,7 @@
 
   <button onclick="saveProfile()">Save Profile</button>
   <button onclick="logOut()">Logout</button>
+  <button id="adminBtn" style="display:none;" onclick="location.href='admin.html'">Administration</button>
 
   <div class="nav">
     <button onclick="location.href='home.html'">Home</button>
@@ -109,6 +115,7 @@
     const displayNameInput = document.getElementById("displayName");
     const usernameInput = document.getElementById("username");
     const pfpInput = document.getElementById("pfpInput");
+    const adminBtn = document.getElementById("adminBtn");
 
     let currentUser = null;
 
@@ -122,12 +129,23 @@
       sessionStorage.setItem("currentUser", user.uid);
       userDisplay.textContent = `Logged in as: ${user.email}`;
 
-      const userDoc = await getDoc(doc(db, "users", user.uid));
+      const userDocRef = doc(db, "users", user.uid);
+      const userDoc = await getDoc(userDocRef);
       if (userDoc.exists()) {
         const data = userDoc.data();
         if (data.profilePicture) pfpImg.src = data.profilePicture;
         if (data.displayName) displayNameInput.value = data.displayName;
         if (data.username) usernameInput.value = data.username;
+
+        // Show verified badge
+        if (data.verified === true) {
+          userDisplay.innerHTML += ` <span class="verified-badge">✔</span>`;
+        }
+
+        // Show admin button for "bunny"
+        if ((data.username || "").toLowerCase() === "bunny") {
+          adminBtn.style.display = "inline-block";
+        }
       }
     });
 
@@ -164,7 +182,8 @@
         email: currentUser.email,
         displayName: displayName || "User",
         username: username,
-        profilePicture: imageData
+        profilePicture: imageData,
+        verified: false // preserve or overwrite, admin controls this field
       });
 
       alert("Profile saved!");
