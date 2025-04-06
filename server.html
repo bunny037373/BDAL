@@ -103,10 +103,6 @@
       const serverSnap = await getDoc(serverRef);
       const serverData = serverSnap.data();
 
-      console.log("Your UID:", user.uid);
-      console.log("Server Owner UID:", serverData.owner);
-
-      // Show owner-only buttons
       if (user.uid === serverData.owner) {
         document.getElementById("addChannelBtn").style.display = "block";
         document.getElementById("inviteBtn").style.display = "block";
@@ -158,10 +154,15 @@
           img.style.height = "40px";
           img.style.borderRadius = "50%";
           img.style.marginRight = "10px";
+          img.style.cursor = "pointer";
+          img.onclick = () => viewUserProfile(userId);
 
           const textBlock = document.createElement("div");
           const name = document.createElement("strong");
           name.textContent = userData.displayName || "User";
+          name.style.cursor = "pointer";
+          name.onclick = () => viewUserProfile(userId);
+
           const text = document.createElement("p");
           text.textContent = msg.text;
           text.style.margin = "3px 0";
@@ -174,6 +175,11 @@
         }
         messageList.scrollTop = messageList.scrollHeight;
       });
+    }
+
+    function viewUserProfile(uid) {
+      sessionStorage.setItem("viewUserId", uid);
+      window.location.href = "user.html";
     }
 
     window.sendMessage = async function () {
