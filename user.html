@@ -141,7 +141,6 @@
         location.reload();
       };
 
-      // Check if already friends
       const isFriend = await getDoc(doc(db, "users", currentUserId, "friends", viewId));
       if (isFriend.exists()) {
         friendBtn.textContent = "Unfriend";
@@ -153,7 +152,6 @@
         return;
       }
 
-      // Check if request already sent
       const sentReq = await getDoc(doc(db, "users", viewId, "requests", currentUserId));
       if (sentReq.exists()) {
         friendBtn.textContent = "Pending...";
@@ -161,7 +159,6 @@
         return;
       }
 
-      // Check if YOU received a request
       const recvReq = await getDoc(doc(db, "users", currentUserId, "requests", viewId));
       if (recvReq.exists()) {
         requestControls.innerHTML = `
@@ -181,7 +178,6 @@
         return;
       }
 
-      // Default: allow sending a request
       friendBtn.textContent = "Add Friend";
       friendBtn.onclick = async () => {
         await setDoc(doc(db, "users", viewId, "requests", currentUserId), {
