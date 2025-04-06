@@ -11,16 +11,15 @@
       padding: 0;
     }
 
-    .server-header {
+    .header, .input-box {
+      padding: 15px;
       background: #5865F2;
       color: white;
-      padding: 15px;
-      text-align: center;
     }
 
     .chat-box {
-      padding: 20px;
-      max-height: 70vh;
+      padding: 15px;
+      max-height: 60vh;
       overflow-y: auto;
     }
 
@@ -43,45 +42,78 @@
       right: 10px;
       background: transparent;
       border: none;
-      color: #999;
+      color: #888;
       cursor: pointer;
-      font-size: 14px;
+    }
+
+    .controls {
+      background: #ddd;
+      padding: 10px;
+    }
+
+    .controls input, .controls button {
+      margin: 5px;
     }
 
     .input-box {
-      display: flex;
-      padding: 15px;
-      background: #ddd;
       position: fixed;
       bottom: 0;
       width: 100%;
+      display: flex;
+      background: #ddd;
     }
 
     .input-box input {
       flex: 1;
       padding: 10px;
-      border: none;
-      border-radius: 6px;
       font-size: 16px;
     }
 
     .input-box button {
       padding: 10px 20px;
-      margin-left: 10px;
       background: #5865F2;
       border: none;
       color: white;
-      border-radius: 6px;
+      font-size: 16px;
       cursor: pointer;
+    }
+
+    .channel-select {
+      padding: 5px;
+      margin: 10px 0;
+    }
+
+    .role {
+      margin-top: 5px;
+      padding: 4px 8px;
+      border-radius: 4px;
+      display: inline-block;
+      color: white;
     }
   </style>
 </head>
 <body>
-  <div class="server-header" id="serverName">Loading server...</div>
-  <div class="chat-box" id="chatBox">Loading messages...</div>
+
+  <div class="header">
+    <h2 id="serverTitle">Server Name</h2>
+    <button onclick="editServer()">Edit Server</button>
+    <button onclick="createChannel()">+ New Channel</button>
+    <select id="channelSelector" class="channel-select" onchange="switchChannel(this.value)">
+    </select>
+  </div>
+
+  <div id="chatBox" class="chat-box">Loading messages...</div>
+
+  <div class="controls" id="adminControls" style="display:none;">
+    <input type="text" id="roleName" placeholder="Role Name">
+    <input type="color" id="roleColor">
+    <button onclick="createRole()">Create Role</button>
+    <input type="text" id="customInvite" placeholder="Custom Invite Code">
+    <button onclick="generateInvite()">Generate Invite</button>
+  </div>
 
   <div class="input-box">
-    <input type="text" id="messageInput" placeholder="Type a message..." />
+    <input type="text" id="messageInput" placeholder="Message...">
     <button onclick="sendMessage()">Send</button>
   </div>
 
@@ -93,13 +125,13 @@
       doc,
       getDoc,
       setDoc,
+      updateDoc,
+      deleteDoc,
       addDoc,
       collection,
       query,
       orderBy,
-      onSnapshot,
-      deleteDoc,
-      updateDoc
+      onSnapshot
     } from "https://www.gstatic.com/firebasejs/11.6.0/firebase-firestore.js";
 
     const firebaseConfig = {
@@ -116,65 +148,89 @@
     const db = getFirestore(app);
 
     const chatBox = document.getElementById("chatBox");
-    const serverName = document.getElementById("serverName");
+    const serverTitle = document.getElementById("serverTitle");
     const messageInput = document.getElementById("messageInput");
+    const channelSelector = document.getElementById("channelSelector");
+    const adminControls = document.getElementById("adminControls");
 
     const serverId = sessionStorage.getItem("currentServer");
     const viewingAs = sessionStorage.getItem("adminViewingAs");
-    let currentUser, currentUid, serverOwner = null, isAdmin = false;
+    let currentUser, currentUid, currentChannel = "general", isOwner = false, isAdmin = false, isVerified = false;
 
     onAuthStateChanged(auth, async (user) => {
-      if (!user) return window.location.href = "login.html";
+      if (!user) return location.href = "login.html";
       currentUser = user;
       currentUid = viewingAs || user.uid;
 
-      const userDoc = await getDoc(doc(db, "users", currentUid));
-      isAdmin = userDoc.data()?.role === "admin";
+      const [userDoc, serverDoc] = await Promise.all([
+        getDoc(doc(db, "users", currentUid)),
+        getDoc(doc(db, "servers", serverId))
+      ]);
 
-      const serverDoc = await getDoc(doc(db, "servers", serverId));
+      const userData = userDoc.data();
       const serverData = serverDoc.data();
-      serverOwner = serverData.owner;
-      serverName.textContent = serverData.name || "Unnamed Server";
 
+      isOwner = serverData.owner === currentUid;
+      isAdmin = userData.role === "admin";
+      isVerified = userData.verified === true;
+
+      serverTitle.textContent = serverData.name;
+      if (isOwner || isAdmin) adminControls.style.display = "block";
+
+      loadChannels();
       loadMessages();
     });
 
+    async function loadChannels() {
+      const q = query(collection(db, "servers", serverId, "channels"));
+      const snap = await getDocs(q);
+      snap.forEach(doc => {
+        const opt = document.createElement("option");
+        opt.value = doc.id;
+        opt.textContent = doc.id;
+        channelSelector.appendChild(opt);
+      });
+    }
+
+    function switchChannel(channel) {
+      currentChannel = channel;
+      loadMessages();
+    }
+
     function loadMessages() {
-      const q = query(collection(db, "servers", serverId, "messages"), orderBy("timestamp"));
+      const q = query(collection(db, "servers", serverId, "channels", currentChannel, "messages"), orderBy("timestamp"));
       onSnapshot(q, (snapshot) => {
         chatBox.innerHTML = "";
-        snapshot.forEach((doc) => {
-          const msg = doc.data();
+        snapshot.forEach(docSnap => {
+          const msg = docSnap.data();
           const div = document.createElement("div");
           div.className = "message";
 
           const date = new Date(msg.timestamp).toLocaleString();
           div.innerHTML = `
-            <div><strong>${msg.displayName || "User"}</strong></div>
+            <div><strong>${msg.displayName}</strong> ${msg.roleName ? `<span class="role" style="background:${msg.roleColor}">${msg.roleName}</span>` : ""}</div>
             <div>${msg.text}</div>
             <div class="message-meta">${date}</div>
           `;
 
-          // Permissions for editing/deleting
+          const canDelete = msg.sender === currentUid || isOwner || isAdmin;
           const canEdit = msg.sender === currentUid;
-          const canDelete = msg.sender === currentUid || currentUid === serverOwner;
 
-          if (canDelete && !isAdmin) {
-            const deleteBtn = document.createElement("button");
-            deleteBtn.innerHTML = "🗑";
-            deleteBtn.onclick = () => deleteMessage(doc.id);
-            div.appendChild(deleteBtn);
+          if (canDelete) {
+            const delBtn = document.createElement("button");
+            delBtn.textContent = "🗑";
+            delBtn.onclick = () => deleteMessage(docSnap.id);
+            div.appendChild(delBtn);
           }
 
-          if (canEdit && !isAdmin) {
+          if (canEdit) {
             const editBtn = document.createElement("button");
-            editBtn.innerHTML = "✏️";
-            editBtn.onclick = () => editMessage(doc.id, msg.text);
+            editBtn.textContent = "✏️";
+            editBtn.onclick = () => editMessage(docSnap.id, msg.text);
             div.appendChild(editBtn);
           }
 
           chatBox.appendChild(div);
-          chatBox.scrollTop = chatBox.scrollHeight;
         });
       });
     }
@@ -184,32 +240,75 @@
       if (!text) return;
 
       const userDoc = await getDoc(doc(db, "users", currentUid));
-      const displayName = userDoc.data().displayName || "User";
+      const { displayName, roleName, roleColor } = userDoc.data();
 
-      await addDoc(collection(db, "servers", serverId, "messages"), {
-        sender: currentUid,
-        displayName,
+      await addDoc(collection(db, "servers", serverId, "channels", currentChannel, "messages"), {
         text,
+        displayName,
+        roleName: roleName || null,
+        roleColor: roleColor || null,
+        sender: currentUid,
         timestamp: Date.now()
       });
 
       messageInput.value = "";
     };
 
-    async function deleteMessage(messageId) {
-      if (confirm("Delete this message?")) {
-        await deleteDoc(doc(db, "servers", serverId, "messages", messageId));
-      }
+    async function deleteMessage(id) {
+      await deleteDoc(doc(db, "servers", serverId, "channels", currentChannel, "messages", id));
     }
 
-    async function editMessage(messageId, oldText) {
-      const newText = prompt("Edit your message:", oldText);
-      if (newText !== null && newText.trim() !== "") {
-        await updateDoc(doc(db, "servers", serverId, "messages", messageId), {
-          text: newText.trim()
+    async function editMessage(id, oldText) {
+      const newText = prompt("Edit message:", oldText);
+      if (newText) {
+        await updateDoc(doc(db, "servers", serverId, "channels", currentChannel, "messages", id), {
+          text: newText
         });
       }
     }
+
+    window.editServer = async function () {
+      if (!isOwner) return alert("Only the owner can edit the server.");
+      const newName = prompt("New server name:");
+      if (!newName) return;
+      await updateDoc(doc(db, "servers", serverId), { name: newName });
+      serverTitle.textContent = newName;
+    };
+
+    window.createChannel = async function () {
+      const name = prompt("New channel name:");
+      if (!name) return;
+      await setDoc(doc(db, "servers", serverId, "channels", name), {});
+      const opt = document.createElement("option");
+      opt.value = name;
+      opt.textContent = name;
+      channelSelector.appendChild(opt);
+    };
+
+    window.createRole = async function () {
+      const name = document.getElementById("roleName").value.trim();
+      const color = document.getElementById("roleColor").value;
+      if (!name) return alert("Role name required");
+
+      await updateDoc(doc(db, "users", currentUid), {
+        roleName: name,
+        roleColor: color
+      });
+
+      alert("Role set!");
+    };
+
+    window.generateInvite = async function () {
+      if (!isOwner || !isVerified) return alert("Only verified owners can create custom invites.");
+      const code = document.getElementById("customInvite").value.trim();
+      if (!code) return alert("Code required");
+
+      await updateDoc(doc(db, "servers", serverId), {
+        inviteCode: code
+      });
+
+      alert(`Invite created: ${location.origin}/join.html?code=${code}`);
+    };
   </script>
 </body>
 </html>
