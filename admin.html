@@ -10,7 +10,7 @@
       color: white;
       padding: 20px;
     }
-    .user-card {
+    .user-card, .banned-card {
       background: #36393F;
       padding: 15px;
       margin-bottom: 15px;
@@ -48,6 +48,9 @@
   <h2>All Users</h2>
   <div id="userList">Loading...</div>
 
+  <h2>Banned Accounts</h2>
+  <div id="bannedList">Loading...</div>
+
   <script type="module">
     import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.0/firebase-app.js";
     import { getAuth, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.0/firebase-auth.js";
@@ -72,24 +75,17 @@
 
     onAuthStateChanged(auth, async (user) => {
       if (!user) return location.href = "homescreen.html";
+      const userRef = doc(db, "users", user.uid);
+      const userSnap = await getDoc(userRef);
+      const userData = userSnap.data();
 
-      try {
-        const userRef = doc(db, "users", user.uid);
-        const userSnap = await getDoc(userRef);
-
-        if (!userSnap.exists()) return location.href = "homescreen.html";
-        const userData = userSnap.data();
-
-        if (!userData.username || !["Bunny", "bunny"].includes(userData.username)) {
-          return location.href = "homescreen.html";
-        }
-
-        originalAdminUid = user.uid;
-        loadUsers();
-      } catch (e) {
-        console.error("Failed to load admin:", e);
-        location.href = "homescreen.html";
+      if (!userData.username || !["Bunny", "bunny"].includes(userData.username)) {
+        return location.href = "homescreen.html";
       }
+
+      originalAdminUid = user.uid;
+      loadUsers();
+      loadBannedEmails();
     });
 
     async function loadUsers() {
@@ -103,6 +99,7 @@
 
         const div = document.createElement("div");
         div.className = "user-card";
+
         div.innerHTML = `
           <strong>${data.displayName || "User"}</strong><br>
           Username: ${data.username || "(none)"}<br>
@@ -136,8 +133,36 @@
         div.appendChild(banBtn);
         div.appendChild(unbanBtn);
         div.appendChild(spectateBtn);
-
         userList.appendChild(div);
+      });
+    }
+
+    async function loadBannedEmails() {
+      const bannedSnap = await getDocs(collection(db, "bannedEmails"));
+      const bannedList = document.getElementById("bannedList");
+      bannedList.innerHTML = "";
+
+      if (bannedSnap.empty) {
+        bannedList.innerHTML = "<p>No banned accounts.</p>";
+        return;
+      }
+
+      bannedSnap.forEach(docSnap => {
+        const email = docSnap.id;
+
+        const div = document.createElement("div");
+        div.className = "banned-card";
+        div.innerHTML = `
+          <strong>Email:</strong> <span class="blurred" onclick="this.classList.remove('blurred')">${email}</span>
+        `;
+
+        const unbanBtn = document.createElement("button");
+        unbanBtn.className = "btn";
+        unbanBtn.textContent = "Unban";
+        unbanBtn.onclick = () => unbanUser(email);
+
+        div.appendChild(unbanBtn);
+        bannedList.appendChild(div);
       });
     }
 
@@ -149,11 +174,13 @@
     async function banUser(uid, email) {
       await setDoc(doc(db, "bannedEmails", email), { banned: true });
       alert("User banned.");
+      loadBannedEmails();
     }
 
     async function unbanUser(email) {
       await deleteDoc(doc(db, "bannedEmails", email));
       alert("User unbanned.");
+      loadBannedEmails();
     }
 
     window.banServer = async () => {
