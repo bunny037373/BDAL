@@ -6,16 +6,20 @@
   <style>
     body {
       margin: 0;
-      display: flex;
       font-family: Arial, sans-serif;
-      background: #2c2f33;
+      display: flex;
+      height: 100vh;
+      background-color: #2c2f33;
       color: white;
     }
+
     .sidebar {
       width: 250px;
       background: #23272A;
       padding: 10px;
+      overflow-y: auto;
     }
+
     .sidebar button {
       width: 100%;
       padding: 10px;
@@ -26,11 +30,25 @@
       cursor: pointer;
       border-radius: 4px;
     }
+
+    .channel-list {
+      margin-top: 20px;
+    }
+
+    .channel {
+      background: #2f3136;
+      padding: 8px;
+      border-radius: 4px;
+      margin-bottom: 5px;
+      cursor: pointer;
+    }
+
     .main {
       flex: 1;
       display: flex;
       flex-direction: column;
     }
+
     .header {
       background-color: #202225;
       padding: 10px;
@@ -38,21 +56,25 @@
       align-items: center;
       gap: 10px;
     }
+
     .header img {
       width: 32px;
       height: 32px;
       border-radius: 5px;
     }
+
     .header h2 {
       margin: 0;
       font-size: 18px;
     }
+
     #chat {
       flex: 1;
       padding: 10px;
       overflow-y: auto;
       background-color: #36393F;
     }
+
     .message {
       margin-bottom: 15px;
       background: #40444B;
@@ -60,6 +82,7 @@
       border-radius: 6px;
       position: relative;
     }
+
     .message img {
       width: 28px;
       height: 28px;
@@ -68,11 +91,13 @@
       margin-right: 10px;
       cursor: pointer;
     }
+
     .input-area {
       display: flex;
       padding: 10px;
       background-color: #40444B;
     }
+
     .input-area input {
       flex: 1;
       padding: 10px;
@@ -80,6 +105,7 @@
       border-radius: 4px;
       font-size: 14px;
     }
+
     .input-area button {
       margin-left: 10px;
       padding: 10px 15px;
@@ -90,16 +116,19 @@
       font-weight: bold;
       cursor: pointer;
     }
+
     .timestamp {
       font-size: 11px;
       color: #999;
     }
+
     .message .tools {
       position: absolute;
       top: 5px;
       right: 10px;
       font-size: 12px;
     }
+
     .message .tools button {
       background: none;
       border: none;
@@ -114,8 +143,7 @@
   <div class="sidebar">
     <button onclick="createTextChannel()">+ Text Channel</button>
     <button onclick="createVoiceChannel()">+ Voice Channel</button>
-    <button onclick="editServer()">Server Settings</button>
-    <button onclick="createInvite()">Invite</button>
+    <div class="channel-list" id="channelList"></div>
   </div>
 
   <div class="main">
@@ -134,7 +162,8 @@
     import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.0/firebase-app.js";
     import { getAuth, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.0/firebase-auth.js";
     import {
-      getFirestore, doc, getDoc, updateDoc, addDoc, collection, query, orderBy, deleteDoc, onSnapshot
+      getFirestore, doc, getDoc, setDoc, updateDoc, addDoc, collection,
+      query, orderBy, deleteDoc, onSnapshot
     } from "https://www.gstatic.com/firebasejs/11.6.0/firebase-firestore.js";
 
     const firebaseConfig = {
@@ -151,9 +180,11 @@
     const db = getFirestore(app);
 
     const serverId = sessionStorage.getItem("currentServer");
-    let currentUser, userData, isOwner = false, isVerified = false;
+    let currentUser, currentUserData, currentChannel = "general";
 
-    const chatDiv = document.getElementById("chat");
+    const chatBox = document.getElementById("chat");
+    const channelList = document.getElementById("channelList");
+    const msgInput = document.getElementById("msgInput");
     const serverNameEl = document.getElementById("serverName");
     const serverIconEl = document.getElementById("serverIcon");
 
@@ -161,41 +192,48 @@
       if (!user) return location.href = "homescreen.html";
       currentUser = user;
       const userDoc = await getDoc(doc(db, "users", user.uid));
-      userData = userDoc.data() || {};
+      currentUserData = userDoc.data();
 
-      const serverRef = doc(db, "servers", serverId);
-      const serverSnap = await getDoc(serverRef);
-      const serverData = serverSnap.data();
-
-      isOwner = serverData.owner === user.uid;
-      isVerified = userData.verified || false;
-
+      const serverDoc = await getDoc(doc(db, "servers", serverId));
+      const serverData = serverDoc.data();
       serverNameEl.textContent = serverData.name;
       serverIconEl.src = serverData.image || "server.png";
 
-      await addDoc(collection(db, "servers", serverId, "messages"), {
-        sender: "system",
-        displayName: "System",
-        profilePicture: "server.png",
-        text: `Welcome ${userData.displayName || "User"}`,
-        timestamp: Date.now()
-      });
-
+      await loadChannels();
       loadMessages();
     });
 
-    async function loadMessages() {
-      const q = query(collection(db, "servers", serverId, "messages"), orderBy("timestamp"));
-      onSnapshot(q, (snap) => {
-        chatDiv.innerHTML = "";
-        snap.forEach(docSnap => {
+    async function loadChannels() {
+      channelList.innerHTML = "";
+      const channelsCol = collection(db, "servers", serverId, "channels");
+      const snap = await onSnapshot(channelsCol, (snapshot) => {
+        channelList.innerHTML = "";
+        snapshot.forEach(doc => {
+          const div = document.createElement("div");
+          div.className = "channel";
+          div.textContent = doc.id;
+          div.onclick = () => {
+            currentChannel = doc.id;
+            loadMessages();
+          };
+          channelList.appendChild(div);
+        });
+      });
+    }
+
+    function loadMessages() {
+      const messagesRef = collection(db, "servers", serverId, "channels", currentChannel, "messages");
+      const q = query(messagesRef, orderBy("timestamp"));
+      onSnapshot(q, (snapshot) => {
+        chatBox.innerHTML = "";
+        snapshot.forEach(docSnap => {
           const msg = docSnap.data();
           const div = document.createElement("div");
           div.className = "message";
 
-          const pic = document.createElement("img");
-          pic.src = msg.profilePicture || "default.png";
-          pic.onclick = () => {
+          const img = document.createElement("img");
+          img.src = msg.profilePicture || "default.png";
+          img.onclick = () => {
             sessionStorage.setItem("viewUserId", msg.sender);
             location.href = "user.html";
           };
@@ -203,66 +241,57 @@
           const name = document.createElement("strong");
           name.textContent = msg.displayName || "User";
 
-          const timestamp = document.createElement("div");
-          timestamp.className = "timestamp";
-          timestamp.textContent = new Date(msg.timestamp).toLocaleString();
-
           const content = document.createElement("div");
           content.appendChild(name);
-          content.innerHTML += "<br>" + msg.text;
-          content.appendChild(timestamp);
+          content.innerHTML += `<br>${msg.text}<br><div class="timestamp">${new Date(msg.timestamp).toLocaleString()}</div>`;
 
-          div.appendChild(pic);
+          div.appendChild(img);
           div.appendChild(content);
 
-          if (msg.sender === currentUser.uid || isOwner) {
+          if (msg.sender === currentUser.uid) {
             const tools = document.createElement("div");
             tools.className = "tools";
-            const del = document.createElement("button");
-            del.textContent = "🗑️";
-            del.onclick = () => deleteDoc(doc(db, "servers", serverId, "messages", docSnap.id));
-            tools.appendChild(del);
+
+            const delBtn = document.createElement("button");
+            delBtn.textContent = "🗑️";
+            delBtn.onclick = () => deleteDoc(doc(db, "servers", serverId, "channels", currentChannel, "messages", docSnap.id));
+
+            tools.appendChild(delBtn);
             div.appendChild(tools);
           }
 
-          chatDiv.appendChild(div);
+          chatBox.appendChild(div);
         });
-        chatDiv.scrollTop = chatDiv.scrollHeight;
+        chatBox.scrollTop = chatBox.scrollHeight;
       });
     }
 
     window.sendMessage = async () => {
-      const input = document.getElementById("msgInput");
-      const text = input.value.trim();
+      const text = msgInput.value.trim();
       if (!text) return;
-      await addDoc(collection(db, "servers", serverId, "messages"), {
+
+      const msg = {
         sender: currentUser.uid,
-        displayName: userData.displayName,
-        profilePicture: userData.profilePicture || "default.png",
+        displayName: currentUserData.displayName,
+        profilePicture: currentUserData.profilePicture || "default.png",
         text,
         timestamp: Date.now()
-      });
-      input.value = "";
+      };
+
+      await addDoc(collection(db, "servers", serverId, "channels", currentChannel, "messages"), msg);
+      msgInput.value = "";
     };
 
-    window.createTextChannel = () => alert("Text channel creation coming soon!");
-    window.createVoiceChannel = () => alert("Voice channel setup coming soon!");
-    window.createInvite = () => {
-      if (!isVerified) return alert("Only verified owners can create custom invite links.");
-      const link = prompt("Enter custom invite code:");
-      if (link) alert(`Invite link created: https://yourapp.com/join/${link}`);
+    window.createTextChannel = async () => {
+      const name = prompt("New text channel name:");
+      if (!name) return;
+      await setDoc(doc(db, "servers", serverId, "channels", name), { type: "text" });
     };
-    window.editServer = async () => {
-      const name = prompt("Enter new server name:");
-      const img = prompt("Enter new server image URL:");
-      if (name || img) {
-        const updates = {};
-        if (name) updates.name = name;
-        if (img) updates.image = img;
-        await updateDoc(doc(db, "servers", serverId), updates);
-        if (name) serverNameEl.textContent = name;
-        if (img) serverIconEl.src = img;
-      }
+
+    window.createVoiceChannel = async () => {
+      const name = prompt("New voice channel name:");
+      if (!name) return;
+      await setDoc(doc(db, "servers", serverId, "channels", name), { type: "voice" });
     };
   </script>
 </body>
