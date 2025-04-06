@@ -50,16 +50,9 @@
       cursor: pointer;
     }
 
-    .active {
-      background-color: #5865F2;
-      color: white;
-    }
-
-    .disabled {
-      background-color: #bbb;
-      color: #eee;
-      cursor: not-allowed;
-    }
+    .active { background-color: #5865F2; color: white; }
+    .disabled { background-color: #bbb; color: #eee; cursor: not-allowed; }
+    .friend-status { margin-top: 10px; font-weight: bold; }
   </style>
 </head>
 <body>
@@ -67,6 +60,7 @@
   <img id="profilePic" src="default.png" alt="Profile Picture">
   <div class="info" id="displayName">Display Name: Loading...</div>
   <div class="info" id="username">Username: Loading...</div>
+  <div class="friend-status" id="friendStatus"></div>
 
   <div class="buttons">
     <button id="addFriendBtn" onclick="addFriend()">Add Friend</button>
@@ -82,8 +76,9 @@
       doc,
       getDoc,
       setDoc,
+      updateDoc,
       collection,
-      addDoc
+      deleteDoc
     } from "https://www.gstatic.com/firebasejs/11.6.0/firebase-firestore.js";
 
     const firebaseConfig = {
@@ -106,8 +101,10 @@
     const addFriendBtn = document.getElementById("addFriendBtn");
     const messageBtn = document.getElementById("messageBtn");
     const reportBtn = document.getElementById("reportBtn");
+    const friendStatus = document.getElementById("friendStatus");
 
     let currentUser = null;
+    let viewedUserData = null;
 
     onAuthStateChanged(auth, async (user) => {
       if (!user) return window.location.href = "login.html";
@@ -118,15 +115,15 @@
 
       const userDoc = await getDoc(doc(db, "users", uidToView));
       if (userDoc.exists()) {
-        const data = userDoc.data();
-        profilePic.src = data.profilePicture || "default.png";
+        viewedUserData = userDoc.data();
+        profilePic.src = viewedUserData.profilePicture || "default.png";
 
-        let name = `Display Name: ${data.displayName || "N/A"}`;
-        let uname = `Username: ${data.username || "N/A"}`;
+        let name = `Display Name: ${viewedUserData.displayName || "N/A"}`;
+        let uname = `Username: ${viewedUserData.username || "N/A"}`;
 
-        if (data.verified) name += `<span class="badge verified">✔ Verified</span>`;
-        if (data.role === "admin") uname += `<span class="badge admin">Admin</span>`;
-        else if (data.role === "developer") uname += `<span class="badge developer">Dev</span>`;
+        if (viewedUserData.verified) name += `<span class="badge verified">✔ Verified</span>`;
+        if (viewedUserData.role === "admin") uname += `<span class="badge admin">Admin</span>`;
+        if (viewedUserData.role === "developer") uname += `<span class="badge developer">Dev</span>`;
 
         displayNameDiv.innerHTML = name;
         usernameDiv.innerHTML = uname;
@@ -141,49 +138,93 @@
         messageBtn.className = "disabled";
         reportBtn.className = "disabled";
       } else {
-        addFriendBtn.className = "active";
-        messageBtn.className = "active";
-        reportBtn.className = "active";
+        checkFriendStatus();
       }
     });
 
+    async function checkFriendStatus() {
+      const myFriendDoc = await getDoc(doc(db, "users", currentUser.uid, "friends", viewUserId));
+      const theirFriendDoc = await getDoc(doc(db, "users", viewUserId, "friends", currentUser.uid));
+
+      if (myFriendDoc.exists()) {
+        const data = myFriendDoc.data();
+        if (data.status === "pending") {
+          addFriendBtn.textContent = "Pending...";
+          addFriendBtn.disabled = true;
+          addFriendBtn.className = "disabled";
+          friendStatus.textContent = "Friend request sent";
+        } else if (data.status === "accepted") {
+          friendStatus.textContent = "You are friends";
+          addFriendBtn.style.display = "none";
+        }
+      }
+
+      if (theirFriendDoc.exists()) {
+        const data = theirFriendDoc.data();
+        if (data.status === "pending" && data.sender !== currentUser.uid) {
+          friendStatus.innerHTML = `${viewedUserData.username} sent you a friend request`;
+          const acceptBtn = document.createElement("button");
+          acceptBtn.textContent = "Accept";
+          acceptBtn.onclick = () => acceptFriend();
+          const ignoreBtn = document.createElement("button");
+          ignoreBtn.textContent = "Ignore";
+          ignoreBtn.onclick = () => ignoreFriend();
+
+          friendStatus.appendChild(document.createElement("br"));
+          friendStatus.appendChild(acceptBtn);
+          friendStatus.appendChild(ignoreBtn);
+        }
+      }
+    }
+
     window.addFriend = async function () {
-      const friendId = sessionStorage.getItem("viewUserId");
-      if (!friendId || friendId === currentUser.uid) return;
-
-      const myRef = doc(db, "users", currentUser.uid, "friends", friendId);
-      const theirRef = doc(db, "users", friendId, "friends", currentUser.uid);
-
-      await setDoc(myRef, {
+      await setDoc(doc(db, "users", currentUser.uid, "friends", viewUserId), {
+        status: "pending",
+        sender: currentUser.uid,
+        timestamp: Date.now()
+      });
+      await setDoc(doc(db, "users", viewUserId, "friends", currentUser.uid), {
         status: "pending",
         sender: currentUser.uid,
         timestamp: Date.now()
       });
 
-      await setDoc(theirRef, {
-        status: "pending",
-        sender: currentUser.uid,
-        timestamp: Date.now()
+      addFriendBtn.textContent = "Pending...";
+      addFriendBtn.disabled = true;
+      addFriendBtn.className = "disabled";
+      friendStatus.textContent = "Friend request sent.";
+    };
+
+    window.acceptFriend = async function () {
+      await updateDoc(doc(db, "users", currentUser.uid, "friends", viewUserId), {
+        status: "accepted"
+      });
+      await updateDoc(doc(db, "users", viewUserId, "friends", currentUser.uid), {
+        status: "accepted"
       });
 
-      alert("Friend request sent!");
+      friendStatus.textContent = "You are now friends!";
+      addFriendBtn.style.display = "none";
+    };
+
+    window.ignoreFriend = async function () {
+      await deleteDoc(doc(db, "users", currentUser.uid, "friends", viewUserId));
+      await deleteDoc(doc(db, "users", viewUserId, "friends", currentUser.uid));
+      friendStatus.textContent = "Friend request ignored.";
     };
 
     window.messageUser = function () {
-      const friendId = sessionStorage.getItem("viewUserId");
-      if (!friendId || friendId === currentUser.uid) return;
-      sessionStorage.setItem("dmUser", friendId);
+      sessionStorage.setItem("dmUser", viewUserId);
       window.location.href = "messaging.html";
     };
 
     window.reportUser = async function () {
-      const reportedUid = sessionStorage.getItem("viewUserId");
       const reason = prompt("Why are you reporting this user?");
       if (!reason) return;
 
-      await addDoc(collection(db, "reports"), {
+      await setDoc(doc(db, "reports", `${currentUser.uid}_${viewUserId}`), {
         reporterUid: currentUser.uid,
-        reportedUid,
+        reportedUid: viewUserId,
         reason,
         timestamp: Date.now()
       });
