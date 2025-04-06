@@ -36,6 +36,7 @@
     .verified { background: #1da1f2; color: white; }
     .admin { background: #dc3545; color: white; }
     .developer { background: #28a745; color: white; }
+    .status { font-weight: bold; margin-bottom: 10px; }
 
     .buttons {
       margin-top: 15px;
@@ -60,12 +61,15 @@
   <img id="profilePic" src="default.png" alt="Profile Picture">
   <div class="info" id="displayName">Display Name: Loading...</div>
   <div class="info" id="username">Username: Loading...</div>
+  <div class="status" id="onlineStatus">Status: Checking...</div>
   <div class="friend-status" id="friendStatus"></div>
 
   <div class="buttons">
     <button id="addFriendBtn" onclick="addFriend()">Add Friend</button>
     <button id="messageBtn" onclick="messageUser()">Message</button>
     <button id="reportBtn" onclick="reportUser()">Report</button>
+    <button id="unfriendBtn" onclick="unfriendUser()">Unfriend</button>
+    <button id="blockBtn" onclick="blockUser()">Block</button>
   </div>
 
   <script type="module">
@@ -77,8 +81,8 @@
       getDoc,
       setDoc,
       updateDoc,
-      collection,
-      deleteDoc
+      deleteDoc,
+      collection
     } from "https://www.gstatic.com/firebasejs/11.6.0/firebase-firestore.js";
 
     const firebaseConfig = {
@@ -101,7 +105,10 @@
     const addFriendBtn = document.getElementById("addFriendBtn");
     const messageBtn = document.getElementById("messageBtn");
     const reportBtn = document.getElementById("reportBtn");
+    const unfriendBtn = document.getElementById("unfriendBtn");
+    const blockBtn = document.getElementById("blockBtn");
     const friendStatus = document.getElementById("friendStatus");
+    const onlineStatus = document.getElementById("onlineStatus");
 
     let currentUser = null;
     let viewedUserData = null;
@@ -127,27 +134,36 @@
 
         displayNameDiv.innerHTML = name;
         usernameDiv.innerHTML = uname;
+
+        checkOnlineStatus(viewedUserData.lastOnline);
       }
 
       if (isSelf) {
-        addFriendBtn.disabled = true;
-        messageBtn.disabled = true;
-        reportBtn.disabled = true;
-
-        addFriendBtn.className = "disabled";
-        messageBtn.className = "disabled";
-        reportBtn.className = "disabled";
+        disableAllButtons();
       } else {
         checkFriendStatus();
       }
     });
 
-    async function checkFriendStatus() {
-      const myFriendDoc = await getDoc(doc(db, "users", currentUser.uid, "friends", viewUserId));
-      const theirFriendDoc = await getDoc(doc(db, "users", viewUserId, "friends", currentUser.uid));
+    function disableAllButtons() {
+      [addFriendBtn, messageBtn, reportBtn, unfriendBtn, blockBtn].forEach(btn => {
+        btn.disabled = true;
+        btn.className = "disabled";
+      });
+    }
 
-      if (myFriendDoc.exists()) {
-        const data = myFriendDoc.data();
+    function checkOnlineStatus(lastOnline) {
+      if (!lastOnline) return onlineStatus.textContent = "Status: Unknown";
+      const diff = Date.now() - lastOnline;
+      onlineStatus.textContent = diff < 300000 ? "Status: Online" : "Status: Offline";
+    }
+
+    async function checkFriendStatus() {
+      const myDoc = await getDoc(doc(db, "users", currentUser.uid, "friends", viewUserId));
+      const theirDoc = await getDoc(doc(db, "users", viewUserId, "friends", currentUser.uid));
+
+      if (myDoc.exists()) {
+        const data = myDoc.data();
         if (data.status === "pending") {
           addFriendBtn.textContent = "Pending...";
           addFriendBtn.disabled = true;
@@ -155,12 +171,11 @@
           friendStatus.textContent = "Friend request sent";
         } else if (data.status === "accepted") {
           friendStatus.textContent = "You are friends";
-          addFriendBtn.style.display = "none";
         }
       }
 
-      if (theirFriendDoc.exists()) {
-        const data = theirFriendDoc.data();
+      if (theirDoc.exists()) {
+        const data = theirDoc.data();
         if (data.status === "pending" && data.sender !== currentUser.uid) {
           friendStatus.innerHTML = `${viewedUserData.username} sent you a friend request`;
           const acceptBtn = document.createElement("button");
@@ -211,6 +226,20 @@
       await deleteDoc(doc(db, "users", currentUser.uid, "friends", viewUserId));
       await deleteDoc(doc(db, "users", viewUserId, "friends", currentUser.uid));
       friendStatus.textContent = "Friend request ignored.";
+    };
+
+    window.unfriendUser = async function () {
+      await deleteDoc(doc(db, "users", currentUser.uid, "friends", viewUserId));
+      await deleteDoc(doc(db, "users", viewUserId, "friends", currentUser.uid));
+      alert("Unfriended.");
+      friendStatus.textContent = "";
+    };
+
+    window.blockUser = async function () {
+      await setDoc(doc(db, "users", currentUser.uid, "blocked", viewUserId), {
+        timestamp: Date.now()
+      });
+      alert("User blocked.");
     };
 
     window.messageUser = function () {
