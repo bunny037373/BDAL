@@ -1,0 +1,192 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Direct Messages</title>
+  <style>
+    body {
+      margin: 0;
+      font-family: Arial, sans-serif;
+      background: #2c2f33;
+      color: white;
+      display: flex;
+      flex-direction: column;
+      height: 100vh;
+    }
+
+    .header {
+      background: #23272A;
+      padding: 15px;
+      font-size: 18px;
+      font-weight: bold;
+    }
+
+    .messages {
+      flex: 1;
+      padding: 15px;
+      overflow-y: auto;
+      background: #36393F;
+    }
+
+    .message {
+      margin-bottom: 12px;
+      background: #40444B;
+      padding: 10px;
+      border-radius: 6px;
+    }
+
+    .message img {
+      width: 32px;
+      height: 32px;
+      border-radius: 50%;
+      vertical-align: middle;
+      margin-right: 10px;
+      cursor: pointer;
+    }
+
+    .message strong {
+      font-size: 15px;
+    }
+
+    .input-area {
+      display: flex;
+      padding: 10px;
+      background: #40444B;
+    }
+
+    .input-area input {
+      flex: 1;
+      padding: 10px;
+      font-size: 14px;
+      border-radius: 5px;
+      border: none;
+    }
+
+    .input-area button {
+      margin-left: 10px;
+      padding: 10px 20px;
+      background: #7289DA;
+      border: none;
+      border-radius: 5px;
+      color: white;
+      cursor: pointer;
+    }
+
+    .timestamp {
+      font-size: 11px;
+      color: #aaa;
+    }
+  </style>
+</head>
+<body>
+
+  <div class="header" id="header">Direct Message</div>
+  <div class="messages" id="messages">Loading...</div>
+  <div class="input-area">
+    <input type="text" id="dmInput" placeholder="Type a message..." />
+    <button onclick="sendDM()">Send</button>
+  </div>
+
+  <script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.0/firebase-app.js";
+    import { getAuth, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.0/firebase-auth.js";
+    import {
+      getFirestore, doc, getDoc, collection, addDoc, onSnapshot, query, orderBy
+    } from "https://www.gstatic.com/firebasejs/11.6.0/firebase-firestore.js";
+
+    const firebaseConfig = {
+      apiKey: "AIzaSyCGGosrc7Ikl1xPnZri5sHuMvEUBB1f2YU",
+      authDomain: "mydiscordclone-fc2be.firebaseapp.com",
+      projectId: "mydiscordclone-fc2be",
+      storageBucket: "mydiscordclone-fc2be.appspot.com",
+      messagingSenderId: "599134697544",
+      appId: "1:599134697544:web:0961e501044324e52b807d"
+    };
+
+    const app = initializeApp(firebaseConfig);
+    const auth = getAuth(app);
+    const db = getFirestore(app);
+
+    let currentUser, receiverId = sessionStorage.getItem("dmUser");
+    let currentUserData = {}, receiverData = {};
+
+    const msgContainer = document.getElementById("messages");
+    const input = document.getElementById("dmInput");
+    const header = document.getElementById("header");
+
+    onAuthStateChanged(auth, async (user) => {
+      if (!user || !receiverId) return location.href = "home.html";
+      currentUser = user;
+
+      const [myDoc, theirDoc] = await Promise.all([
+        getDoc(doc(db, "users", user.uid)),
+        getDoc(doc(db, "users", receiverId))
+      ]);
+
+      currentUserData = myDoc.data();
+      receiverData = theirDoc.data();
+      header.textContent = `Chat with ${receiverData.displayName || "User"}`;
+
+      const roomId = getRoomId(user.uid, receiverId);
+      const chatRef = collection(db, "dmRooms", roomId, "messages");
+      const q = query(chatRef, orderBy("timestamp"));
+
+      onSnapshot(q, (snap) => {
+        msgContainer.innerHTML = "";
+        snap.forEach(doc => {
+          const msg = doc.data();
+          const div = document.createElement("div");
+          div.className = "message";
+
+          const img = document.createElement("img");
+          img.src = msg.profilePicture || "default.png";
+          img.onclick = () => {
+            sessionStorage.setItem("viewUserId", msg.sender);
+            location.href = "user.html";
+          };
+
+          const content = document.createElement("div");
+          const name = document.createElement("strong");
+          name.textContent = msg.displayName || "User";
+          const text = document.createElement("div");
+          text.textContent = msg.text;
+
+          const timestamp = document.createElement("div");
+          timestamp.className = "timestamp";
+          timestamp.textContent = new Date(msg.timestamp).toLocaleString();
+
+          content.appendChild(name);
+          content.appendChild(text);
+          content.appendChild(timestamp);
+
+          div.appendChild(img);
+          div.appendChild(content);
+          msgContainer.appendChild(div);
+        });
+        msgContainer.scrollTop = msgContainer.scrollHeight;
+      });
+    });
+
+    function getRoomId(id1, id2) {
+      return [id1, id2].sort().join("_");
+    }
+
+    window.sendDM = async () => {
+      const text = input.value.trim();
+      if (!text) return;
+      const roomId = getRoomId(currentUser.uid, receiverId);
+
+      await addDoc(collection(db, "dmRooms", roomId, "messages"), {
+        sender: currentUser.uid,
+        displayName: currentUserData.displayName,
+        profilePicture: currentUserData.profilePicture || "default.png",
+        text,
+        timestamp: Date.now()
+      });
+
+      input.value = "";
+    };
+  </script>
+
+</body>
+</html>
