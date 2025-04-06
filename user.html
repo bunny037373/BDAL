@@ -25,6 +25,18 @@
       margin-bottom: 10px;
     }
 
+    .badge {
+      display: inline-block;
+      padding: 3px 8px;
+      font-size: 12px;
+      border-radius: 12px;
+      margin-left: 5px;
+    }
+
+    .verified { background: #1da1f2; color: white; }
+    .admin { background: #dc3545; color: white; }
+    .developer { background: #28a745; color: white; }
+
     .buttons {
       margin-top: 15px;
     }
@@ -59,6 +71,7 @@
   <div class="buttons">
     <button id="addFriendBtn" onclick="addFriend()">Add Friend</button>
     <button id="messageBtn" onclick="messageUser()">Message</button>
+    <button id="reportBtn" onclick="reportUser()">Report</button>
   </div>
 
   <script type="module">
@@ -70,7 +83,7 @@
       getDoc,
       setDoc,
       collection,
-      getDocs
+      addDoc
     } from "https://www.gstatic.com/firebasejs/11.6.0/firebase-firestore.js";
 
     const firebaseConfig = {
@@ -92,18 +105,14 @@
     const usernameDiv = document.getElementById("username");
     const addFriendBtn = document.getElementById("addFriendBtn");
     const messageBtn = document.getElementById("messageBtn");
+    const reportBtn = document.getElementById("reportBtn");
 
     let currentUser = null;
 
     onAuthStateChanged(auth, async (user) => {
-      if (!user) {
-        window.location.href = "login.html";
-        return;
-      }
-
+      if (!user) return window.location.href = "login.html";
       currentUser = user;
 
-      // If no profile selected, view own profile
       const uidToView = viewUserId || currentUser.uid;
       const isSelf = uidToView === currentUser.uid;
 
@@ -111,22 +120,30 @@
       if (userDoc.exists()) {
         const data = userDoc.data();
         profilePic.src = data.profilePicture || "default.png";
-        displayNameDiv.textContent = "Display Name: " + (data.displayName || "N/A");
-        usernameDiv.textContent = "Username: " + (data.username || "N/A");
-      } else {
-        displayNameDiv.textContent = "Display Name: Unknown";
-        usernameDiv.textContent = "Username: Unknown";
+
+        let name = `Display Name: ${data.displayName || "N/A"}`;
+        let uname = `Username: ${data.username || "N/A"}`;
+
+        if (data.verified) name += `<span class="badge verified">✔ Verified</span>`;
+        if (data.role === "admin") uname += `<span class="badge admin">Admin</span>`;
+        else if (data.role === "developer") uname += `<span class="badge developer">Dev</span>`;
+
+        displayNameDiv.innerHTML = name;
+        usernameDiv.innerHTML = uname;
       }
 
-      // Disable buttons if viewing own profile
       if (isSelf) {
-        addFriendBtn.classList.add("disabled");
         addFriendBtn.disabled = true;
-        messageBtn.classList.add("disabled");
         messageBtn.disabled = true;
+        reportBtn.disabled = true;
+
+        addFriendBtn.className = "disabled";
+        messageBtn.className = "disabled";
+        reportBtn.className = "disabled";
       } else {
-        addFriendBtn.classList.add("active");
-        messageBtn.classList.add("active");
+        addFriendBtn.className = "active";
+        messageBtn.className = "active";
+        reportBtn.className = "active";
       }
     });
 
@@ -157,6 +174,21 @@
       if (!friendId || friendId === currentUser.uid) return;
       sessionStorage.setItem("dmUser", friendId);
       window.location.href = "messaging.html";
+    };
+
+    window.reportUser = async function () {
+      const reportedUid = sessionStorage.getItem("viewUserId");
+      const reason = prompt("Why are you reporting this user?");
+      if (!reason) return;
+
+      await addDoc(collection(db, "reports"), {
+        reporterUid: currentUser.uid,
+        reportedUid,
+        reason,
+        timestamp: Date.now()
+      });
+
+      alert("Report submitted.");
     };
   </script>
 </body>
