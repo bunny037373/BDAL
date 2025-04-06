@@ -1,72 +1,71 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8">
+  <meta charset="UTF-8" />
   <title>User Profile</title>
   <style>
     body {
-      font-family: Arial, sans-serif;
       background: #2c2f33;
       color: white;
+      font-family: Arial, sans-serif;
       text-align: center;
-      padding-top: 50px;
+      padding: 40px;
     }
     img {
-      width: 100px;
-      height: 100px;
+      width: 120px;
+      height: 120px;
       border-radius: 50%;
-      border: 2px solid #fff;
+      object-fit: cover;
+      margin-bottom: 10px;
     }
-    .info {
-      margin: 10px 0;
-      font-size: 18px;
+    h2, h3 {
+      margin: 5px 0;
     }
-    button {
-      margin: 8px;
-      padding: 10px 20px;
-      font-size: 15px;
+    p {
+      color: #ccc;
+      max-width: 500px;
+      margin: 10px auto;
+    }
+    .actions {
+      margin-top: 20px;
+    }
+    .actions button {
+      background: #5865F2;
+      color: white;
       border: none;
+      padding: 10px 20px;
+      margin: 6px;
       border-radius: 5px;
+      font-size: 14px;
       cursor: pointer;
     }
-    .disabled {
+    .actions button.gray {
       background: gray;
-      color: #bbb;
       cursor: not-allowed;
-    }
-    .active {
-      background-color: #7289DA;
-      color: white;
-    }
-    .blocked {
-      color: #ff4444;
-      margin-top: 10px;
     }
   </style>
 </head>
 <body>
 
-  <h2>User Profile</h2>
-  <img id="profilePic" src="default.png" alt="Profile Picture"><br>
-  <div class="info" id="displayName">Loading...</div>
-  <div class="info" id="username">Username: ...</div>
-  <div class="info" id="status">Checking status...</div>
+  <img id="pfp" src="default.png" alt="PFP">
+  <h2 id="displayName">Display Name</h2>
+  <h3 id="username">@username</h3>
+  <p id="bio">Bio goes here...</p>
 
-  <div id="actions">
-    <button id="addFriendBtn" class="active" onclick="addFriend()">Add Friend</button>
-    <button id="messageBtn" class="active" onclick="messageUser()">Message</button>
-    <button id="reportBtn" class="active" onclick="reportUser()">Report</button>
-    <button id="blockBtn" class="active" onclick="blockUser()">Block</button>
-    <button id="unblockBtn" class="active" onclick="unblockUser()" style="display:none;">Unblock</button>
+  <div class="actions">
+    <button id="friendBtn">Add Friend</button>
+    <button id="messageBtn">Message</button>
+    <button id="reportBtn">Report</button>
+    <button id="blockBtn">Block</button>
   </div>
 
-  <div class="blocked" id="blockNote"></div>
+  <div id="requestControls" style="margin-top: 20px;"></div>
 
   <script type="module">
     import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.0/firebase-app.js";
     import { getAuth, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.0/firebase-auth.js";
     import {
-      getFirestore, doc, getDoc, setDoc, deleteDoc
+      getFirestore, doc, getDoc, setDoc, deleteDoc, collection, getDocs
     } from "https://www.gstatic.com/firebasejs/11.6.0/firebase-firestore.js";
 
     const firebaseConfig = {
@@ -82,66 +81,132 @@
     const auth = getAuth(app);
     const db = getFirestore(app);
 
-    const viewUserId = sessionStorage.getItem("viewUserId");
-    let currentUser;
+    const viewId = sessionStorage.getItem("viewUser");
+    let currentUserId = null;
 
-    const pic = document.getElementById("profilePic");
-    const displayName = document.getElementById("displayName");
-    const username = document.getElementById("username");
-    const status = document.getElementById("status");
+    const friendBtn = document.getElementById("friendBtn");
+    const messageBtn = document.getElementById("messageBtn");
+    const reportBtn = document.getElementById("reportBtn");
     const blockBtn = document.getElementById("blockBtn");
-    const unblockBtn = document.getElementById("unblockBtn");
-    const blockNote = document.getElementById("blockNote");
+    const requestControls = document.getElementById("requestControls");
 
     onAuthStateChanged(auth, async (user) => {
-      if (!user || !viewUserId) return location.href = "home.html";
-      currentUser = user;
+      if (!user) return location.href = "homescreen.html";
+      currentUserId = user.uid;
 
-      const userDoc = await getDoc(doc(db, "users", viewUserId));
-      if (userDoc.exists()) {
-        const data = userDoc.data();
-        pic.src = data.profilePicture || "default.png";
-        displayName.textContent = data.displayName || "Display Name";
-        username.textContent = "Username: " + (data.username || "unknown");
+      if (!viewId || viewId === currentUserId) {
+        friendBtn.classList.add("gray");
+        friendBtn.disabled = true;
+        messageBtn.classList.add("gray");
+        messageBtn.disabled = true;
+        reportBtn.classList.add("gray");
+        reportBtn.disabled = true;
+        blockBtn.textContent = "Block";
+        blockBtn.onclick = () => {};
+        return;
       }
 
-      checkBlockStatus();
+      const viewSnap = await getDoc(doc(db, "users", viewId));
+      const viewData = viewSnap.data();
+
+      document.getElementById("pfp").src = viewData.profilePicture || "default.png";
+      document.getElementById("displayName").textContent = viewData.displayName || "No Name";
+      document.getElementById("username").textContent = "@" + (viewData.username || "unknown");
+      document.getElementById("bio").textContent = viewData.description || "No bio set.";
+
+      const isBlocked = await getDoc(doc(db, "users", currentUserId, "blocked", viewId));
+      const blockedYou = await getDoc(doc(db, "users", viewId, "blocked", currentUserId));
+
+      if (isBlocked.exists() || blockedYou.exists()) {
+        friendBtn.classList.add("gray");
+        friendBtn.disabled = true;
+        messageBtn.classList.add("gray");
+        messageBtn.disabled = true;
+        reportBtn.classList.add("gray");
+        reportBtn.disabled = true;
+        blockBtn.textContent = "Unblock";
+        blockBtn.onclick = async () => {
+          await deleteDoc(doc(db, "users", currentUserId, "blocked", viewId));
+          location.reload();
+        };
+        return;
+      }
+
+      blockBtn.textContent = "Block";
+      blockBtn.onclick = async () => {
+        await setDoc(doc(db, "users", currentUserId, "blocked", viewId), {
+          uid: viewId,
+          timestamp: Date.now()
+        });
+        location.reload();
+      };
+
+      // Check if already friends
+      const isFriend = await getDoc(doc(db, "users", currentUserId, "friends", viewId));
+      if (isFriend.exists()) {
+        friendBtn.textContent = "Unfriend";
+        friendBtn.onclick = async () => {
+          await deleteDoc(doc(db, "users", currentUserId, "friends", viewId));
+          await deleteDoc(doc(db, "users", viewId, "friends", currentUserId));
+          location.reload();
+        };
+        return;
+      }
+
+      // Check if request already sent
+      const sentReq = await getDoc(doc(db, "users", viewId, "requests", currentUserId));
+      if (sentReq.exists()) {
+        friendBtn.textContent = "Pending...";
+        friendBtn.disabled = true;
+        return;
+      }
+
+      // Check if YOU received a request
+      const recvReq = await getDoc(doc(db, "users", currentUserId, "requests", viewId));
+      if (recvReq.exists()) {
+        requestControls.innerHTML = `
+          <button class="accept" style="background:#43b581;" onclick="acceptRequest()">Accept</button>
+          <button class="deny" style="background:#f04747;" onclick="denyRequest()">Deny</button>
+        `;
+        window.acceptRequest = async () => {
+          await setDoc(doc(db, "users", currentUserId, "friends", viewId), { uid: viewId });
+          await setDoc(doc(db, "users", viewId, "friends", currentUserId), { uid: currentUserId });
+          await deleteDoc(doc(db, "users", currentUserId, "requests", viewId));
+          location.reload();
+        };
+        window.denyRequest = async () => {
+          await deleteDoc(doc(db, "users", currentUserId, "requests", viewId));
+          location.reload();
+        };
+        return;
+      }
+
+      // Default: allow sending a request
+      friendBtn.textContent = "Add Friend";
+      friendBtn.onclick = async () => {
+        await setDoc(doc(db, "users", viewId, "requests", currentUserId), {
+          from: currentUserId,
+          timestamp: Date.now()
+        });
+        location.reload();
+      };
+
+      reportBtn.onclick = async () => {
+        const reportRef = doc(collection(db, "reports"));
+        await setDoc(reportRef, {
+          reporter: currentUserId,
+          reported: viewId,
+          timestamp: Date.now()
+        });
+        alert("User reported.");
+      };
+
+      messageBtn.onclick = () => {
+        sessionStorage.setItem("dmUser", viewId);
+        window.location.href = "messaging.html";
+      };
     });
-
-    async function checkBlockStatus() {
-      const blockRef = doc(db, "users", currentUser.uid, "blocked", viewUserId);
-      const snap = await getDoc(blockRef);
-      if (snap.exists()) {
-        status.textContent = "Blocked";
-        blockNote.textContent = "You have blocked this user.";
-        blockBtn.style.display = "none";
-        unblockBtn.style.display = "inline-block";
-      } else {
-        status.textContent = "Active";
-        blockNote.textContent = "";
-        blockBtn.style.display = "inline-block";
-        unblockBtn.style.display = "none";
-      }
-    }
-
-    window.blockUser = async () => {
-      await setDoc(doc(db, "users", currentUser.uid, "blocked", viewUserId), {
-        timestamp: Date.now()
-      });
-      checkBlockStatus();
-    };
-
-    window.unblockUser = async () => {
-      await deleteDoc(doc(db, "users", currentUser.uid, "blocked", viewUserId));
-      checkBlockStatus();
-    };
-
-    window.addFriend = () => alert("Friend logic coming soon!");
-    window.messageUser = () => {
-      sessionStorage.setItem("dmUser", viewUserId);
-      location.href = "messaging.html";
-    };
-    window.reportUser = () => alert("Reported.");
   </script>
+
 </body>
 </html>
