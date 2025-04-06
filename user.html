@@ -1,83 +1,71 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8" />
+  <meta charset="UTF-8">
   <title>User Profile</title>
   <style>
     body {
-      font-family: Arial, sans-serif;
-      background-color: #1e1f22;
+      background-color: #1e1e1e;
       color: white;
       text-align: center;
-      padding-top: 40px;
+      font-family: Arial;
     }
-
-    img {
+    .profile-img {
       width: 100px;
       height: 100px;
       border-radius: 50%;
       object-fit: cover;
-      margin-bottom: 10px;
+      margin-top: 30px;
     }
-
-    h2 {
-      margin: 10px 0 0;
-    }
-
-    p {
-      margin: 5px 0 20px;
-    }
-
     .badge {
-      display: inline-block;
-      padding: 2px 6px;
-      font-size: 12px;
-      border-radius: 4px;
       margin-left: 5px;
-    }
-
-    .verified { background: #1da1f2; }
-    .dev { background: #28a745; }
-    .admin { background: #ff6347; }
-
-    .buttons button {
-      background: #555;
-      color: white;
-      padding: 10px 15px;
-      margin: 5px;
-      border: none;
+      padding: 2px 5px;
       border-radius: 4px;
+      font-size: 12px;
+    }
+    .verified { background: #4caf50; }
+    .dev { background: #00bcd4; }
+    .admin { background: #ff5722; }
+
+    .btn {
+      margin: 10px;
+      padding: 10px 20px;
+      font-size: 16px;
+      border: none;
+      border-radius: 6px;
+      background-color: #444;
+      color: white;
       cursor: pointer;
     }
-
-    .buttons button:disabled {
-      background: #888;
+    .btn.disabled {
+      background-color: #777;
       cursor: not-allowed;
     }
   </style>
 </head>
 <body>
+  <h2>User Profile</h2>
+  <img id="pfp" class="profile-img" src="default.png" alt="Profile Picture">
+  <h3 id="displayName">Display Name</h3>
+  <p id="username">@username <span id="badges"></span></p>
+  <p id="bio">Bio goes here...</p>
 
-  <div id="profile">
-    <img id="pfp" src="default.png" alt="Profile Picture" />
-    <h2 id="displayName">Display Name</h2>
-    <h4 id="username">@username <span id="badges"></span></h4>
-    <p id="bio">Bio goes here...</p>
-  </div>
-
-  <div class="buttons">
-    <button id="friendBtn">Add Friend</button>
-    <button id="msgBtn">Message</button>
-    <button id="reportBtn">Report</button>
-    <button id="blockBtn">Block</button>
+  <div id="actions">
+    <button class="btn" id="friendBtn">Add Friend</button>
+    <button class="btn" id="messageBtn">Message</button>
+    <button class="btn" id="reportBtn">Report</button>
+    <button class="btn" id="blockBtn">Block</button>
   </div>
 
   <script type="module">
     import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.0/firebase-app.js";
-    import { getAuth, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.0/firebase-auth.js";
     import {
-      getFirestore, doc, getDoc, updateDoc, arrayUnion, arrayRemove
+      getFirestore, doc, getDoc, updateDoc,
+      arrayUnion, arrayRemove
     } from "https://www.gstatic.com/firebasejs/11.6.0/firebase-firestore.js";
+    import {
+      getAuth, onAuthStateChanged
+    } from "https://www.gstatic.com/firebasejs/11.6.0/firebase-auth.js";
 
     const firebaseConfig = {
       apiKey: "AIzaSyCGGosrc7Ikl1xPnZri5sHuMvEUBB1f2YU",
@@ -89,119 +77,120 @@
     };
 
     const app = initializeApp(firebaseConfig);
-    const auth = getAuth(app);
     const db = getFirestore(app);
+    const auth = getAuth();
 
-    const params = new URLSearchParams(location.search);
-    const targetId = params.get("uid");
+    const uid = sessionStorage.getItem("viewingUser");
+    if (!uid) {
+      document.body.innerHTML = "<h2>Error: No user selected</h2>";
+      throw new Error("No user set in sessionStorage");
+    }
 
-    let currentUser;
+    let currentUserId = null;
 
     onAuthStateChanged(auth, async (user) => {
-      if (!user || !targetId) return location.href = "login.html";
-      currentUser = user;
+      if (!user) return location.href = "login.html";
+      currentUserId = user.uid;
 
-      const targetSnap = await getDoc(doc(db, "users", targetId));
-      if (!targetSnap.exists()) return alert("User not found.");
+      const docSnap = await getDoc(doc(db, "users", uid));
+      if (!docSnap.exists()) return alert("User not found");
 
-      const data = targetSnap.data();
+      const data = docSnap.data();
       document.getElementById("pfp").src = data.profile || "default.png";
-      document.getElementById("displayName").textContent = data.displayName || "Unknown";
-      document.getElementById("username").textContent = "@" + data.username;
-      document.getElementById("bio").textContent = data.bio || "";
+      document.getElementById("displayName").textContent = data.displayName || "No Name";
+      document.getElementById("username").textContent = `@${data.username}`;
+      document.getElementById("bio").textContent = data.bio || "No bio provided.";
 
-      const badges = [];
-      if (data.verified) badges.push('<span class="badge verified">✔️</span>');
-      if (data.role === "dev") badges.push('<span class="badge dev">Dev</span>');
-      if (data.role === "admin") badges.push('<span class="badge admin">Admin</span>');
-      document.getElementById("badges").innerHTML = badges.join(" ");
+      const badges = document.getElementById("badges");
+      if (data.verified) badges.innerHTML += `<span class="badge verified">✔️</span>`;
+      if (data.role === "developer") badges.innerHTML += `<span class="badge dev">Dev</span>`;
+      if (data.role === "admin") badges.innerHTML += `<span class="badge admin">Admin</span>`;
 
-      setupFriendButtons(user.uid, targetId, data);
-    });
-
-    async function setupFriendButtons(myUid, theirUid, data) {
       const friendBtn = document.getElementById("friendBtn");
-      const msgBtn = document.getElementById("msgBtn");
       const blockBtn = document.getElementById("blockBtn");
+      const messageBtn = document.getElementById("messageBtn");
       const reportBtn = document.getElementById("reportBtn");
 
-      const mySnap = await getDoc(doc(db, "users", myUid));
-      const myData = mySnap.data();
-      const friends = myData.friends || [];
-      const sent = myData.sent || [];
-      const received = myData.received || [];
-      const blocked = myData.blocked || [];
-
-      const isMe = myUid === theirUid;
-      if (isMe) {
+      if (uid === currentUserId) {
+        friendBtn.classList.add("disabled");
         friendBtn.disabled = true;
-        msgBtn.disabled = true;
+        messageBtn.disabled = true;
         reportBtn.disabled = true;
-        blockBtn.disabled = true;
+        blockBtn.textContent = "Unblock";
+        blockBtn.classList.add("disabled");
         return;
       }
 
-      if (friends.includes(theirUid)) {
-        friendBtn.textContent = "Unfriend";
-        friendBtn.onclick = async () => {
-          await updateDoc(doc(db, "users", myUid), { friends: arrayRemove(theirUid) });
-          await updateDoc(doc(db, "users", theirUid), { friends: arrayRemove(myUid) });
-          location.reload();
-        };
-      } else if (sent.includes(theirUid)) {
-        friendBtn.textContent = "Pending...";
-        friendBtn.disabled = true;
-      } else if (received.includes(theirUid)) {
-        friendBtn.textContent = "Accept";
-        const ignoreBtn = document.createElement("button");
-        ignoreBtn.textContent = "Ignore";
-        ignoreBtn.onclick = async () => {
-          await updateDoc(doc(db, "users", myUid), { received: arrayRemove(theirUid) });
-          await updateDoc(doc(db, "users", theirUid), { sent: arrayRemove(myUid) });
-          location.reload();
-        };
-        friendBtn.onclick = async () => {
-          await updateDoc(doc(db, "users", myUid), {
-            received: arrayRemove(theirUid),
-            friends: arrayUnion(theirUid)
-          });
-          await updateDoc(doc(db, "users", theirUid), {
-            sent: arrayRemove(myUid),
-            friends: arrayUnion(myUid)
-          });
-          location.reload();
-        };
-        document.querySelector(".buttons").appendChild(ignoreBtn);
+      const currentDoc = await getDoc(doc(db, "users", currentUserId));
+      const currentData = currentDoc.data();
+
+      const isBlocked = currentData.blocked?.includes(uid);
+      const isFriend = currentData.friends?.includes(uid);
+      const pending = currentData.friendRequestsSent?.includes(uid);
+
+      if (isBlocked) {
+        friendBtn.classList.add("disabled");
+        friendBtn.textContent = "Blocked";
+        messageBtn.disabled = true;
+        reportBtn.disabled = true;
+        blockBtn.textContent = "Unblock";
       } else {
-        friendBtn.textContent = "Add Friend";
-        friendBtn.onclick = async () => {
-          await updateDoc(doc(db, "users", myUid), { sent: arrayUnion(theirUid) });
-          await updateDoc(doc(db, "users", theirUid), { received: arrayUnion(myUid) });
-          location.reload();
-        };
+        if (isFriend) {
+          friendBtn.textContent = "Unfriend";
+        } else if (pending) {
+          friendBtn.textContent = "Pending...";
+          friendBtn.classList.add("disabled");
+          friendBtn.disabled = true;
+        } else {
+          friendBtn.textContent = "Add Friend";
+        }
+        blockBtn.textContent = "Block";
       }
 
-      msgBtn.onclick = () => {
-        if (!friends.includes(theirUid)) {
+      friendBtn.onclick = async () => {
+        if (friendBtn.classList.contains("disabled")) return;
+        await updateDoc(doc(db, "users", currentUserId), {
+          friendRequestsSent: arrayUnion(uid)
+        });
+        await updateDoc(doc(db, "users", uid), {
+          friendRequests: arrayUnion(currentUserId)
+        });
+        alert("Friend request sent!");
+        friendBtn.textContent = "Pending...";
+        friendBtn.disabled = true;
+      };
+
+      blockBtn.onclick = async () => {
+        if (isBlocked) {
+          await updateDoc(doc(db, "users", currentUserId), {
+            blocked: arrayRemove(uid)
+          });
+          alert("User unblocked.");
+          location.reload();
+        } else {
+          await updateDoc(doc(db, "users", currentUserId), {
+            blocked: arrayUnion(uid)
+          });
+          alert("User blocked.");
+          location.reload();
+        }
+      };
+
+      messageBtn.onclick = () => {
+        if (!isFriend) {
           return alert("System Error: we’re sorry but you are not friended to this person so you cannot message them anything until you added them. Please try again later.");
         }
-        location.href = `messaging.html?uid=${theirUid}`;
+        sessionStorage.setItem("dmUser", uid);
+        location.href = "messaging.html";
       };
 
-      blockBtn.textContent = blocked.includes(theirUid) ? "Unblock" : "Block";
-      blockBtn.onclick = async () => {
-        if (blocked.includes(theirUid)) {
-          await updateDoc(doc(db, "users", myUid), { blocked: arrayRemove(theirUid) });
-        } else {
-          await updateDoc(doc(db, "users", myUid), { blocked: arrayUnion(theirUid) });
-        }
-        location.reload();
+      reportBtn.onclick = async () => {
+        await updateDoc(doc(db, "reports", uid), {
+          reportedBy: arrayUnion(currentUserId)
+        });
+        alert("User reported.");
       };
-
-      reportBtn.onclick = () => {
-        alert("Report submitted.");
-      };
-    }
+    });
   </script>
 </body>
 </html>
