@@ -2,59 +2,64 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <title>Friend System</title>
+  <title>User Profile</title>
   <style>
     body {
       font-family: Arial, sans-serif;
       text-align: center;
-      padding-top: 40px;
       background: #f4f4f4;
+      padding-top: 40px;
     }
 
-    input {
-      padding: 10px;
-      font-size: 16px;
-      margin: 10px;
-      width: 250px;
+    img {
+      width: 100px;
+      height: 100px;
+      border-radius: 50%;
+      object-fit: cover;
+      border: 2px solid #ccc;
+      margin-bottom: 15px;
+    }
+
+    .info {
+      font-size: 18px;
+      margin-bottom: 10px;
+    }
+
+    .buttons {
+      margin-top: 15px;
     }
 
     button {
       padding: 10px 20px;
       font-size: 16px;
       margin: 5px;
-      background-color: #5865F2;
-      color: white;
       border: none;
       border-radius: 6px;
       cursor: pointer;
     }
 
-    h3 {
-      margin-top: 30px;
-      color: #333;
+    .active {
+      background-color: #5865F2;
+      color: white;
     }
 
-    .friend-box {
-      background: white;
-      margin: 10px auto;
-      padding: 10px;
-      border-radius: 6px;
-      width: 300px;
-      box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    .disabled {
+      background-color: #bbb;
+      color: #eee;
+      cursor: not-allowed;
     }
   </style>
 </head>
 <body>
-  <h2>Friend System</h2>
+  <h2>User Profile</h2>
+  <img id="profilePic" src="default.png" alt="Profile Picture">
+  <div class="info" id="displayName">Display Name: Loading...</div>
+  <div class="info" id="username">Username: Loading...</div>
 
-  <input type="text" id="addUsername" placeholder="Enter username to add"><br>
-  <button onclick="sendFriendRequest()">Add Friend</button>
-
-  <h3>Friend Requests</h3>
-  <div id="friendRequests">Loading...</div>
-
-  <h3>Friends</h3>
-  <div id="friendsList">Loading...</div>
+  <div class="buttons">
+    <button id="addFriendBtn" onclick="addFriend()">Add Friend</button>
+    <button id="messageBtn" onclick="messageUser()">Message</button>
+  </div>
 
   <script type="module">
     import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.0/firebase-app.js";
@@ -64,8 +69,6 @@
       doc,
       getDoc,
       setDoc,
-      updateDoc,
-      deleteDoc,
       collection,
       getDocs
     } from "https://www.gstatic.com/firebasejs/11.6.0/firebase-firestore.js";
@@ -83,32 +86,56 @@
     const auth = getAuth(app);
     const db = getFirestore(app);
 
+    const viewUserId = sessionStorage.getItem("viewUserId");
+    const profilePic = document.getElementById("profilePic");
+    const displayNameDiv = document.getElementById("displayName");
+    const usernameDiv = document.getElementById("username");
+    const addFriendBtn = document.getElementById("addFriendBtn");
+    const messageBtn = document.getElementById("messageBtn");
+
     let currentUser = null;
 
     onAuthStateChanged(auth, async (user) => {
-      if (!user) return (window.location.href = "login.html");
+      if (!user) {
+        window.location.href = "login.html";
+        return;
+      }
+
       currentUser = user;
-      loadFriendData();
+
+      // If no profile selected, view own profile
+      const uidToView = viewUserId || currentUser.uid;
+      const isSelf = uidToView === currentUser.uid;
+
+      const userDoc = await getDoc(doc(db, "users", uidToView));
+      if (userDoc.exists()) {
+        const data = userDoc.data();
+        profilePic.src = data.profilePicture || "default.png";
+        displayNameDiv.textContent = "Display Name: " + (data.displayName || "N/A");
+        usernameDiv.textContent = "Username: " + (data.username || "N/A");
+      } else {
+        displayNameDiv.textContent = "Display Name: Unknown";
+        usernameDiv.textContent = "Username: Unknown";
+      }
+
+      // Disable buttons if viewing own profile
+      if (isSelf) {
+        addFriendBtn.classList.add("disabled");
+        addFriendBtn.disabled = true;
+        messageBtn.classList.add("disabled");
+        messageBtn.disabled = true;
+      } else {
+        addFriendBtn.classList.add("active");
+        messageBtn.classList.add("active");
+      }
     });
 
-    async function sendFriendRequest() {
-      const username = document.getElementById("addUsername").value.trim().toLowerCase();
-      if (!username || username === "") return alert("Enter a username.");
+    window.addFriend = async function () {
+      const friendId = sessionStorage.getItem("viewUserId");
+      if (!friendId || friendId === currentUser.uid) return;
 
-      const allUsers = await getDocs(collection(db, "users"));
-      let targetUser = null;
-
-      allUsers.forEach((docSnap) => {
-        const data = docSnap.data();
-        if (data.username === username && docSnap.id !== currentUser.uid) {
-          targetUser = { id: docSnap.id, data };
-        }
-      });
-
-      if (!targetUser) return alert("User not found.");
-
-      const targetRef = doc(db, "users", targetUser.id, "friends", currentUser.uid);
-      const myRef = doc(db, "users", currentUser.uid, "friends", targetUser.id);
+      const myRef = doc(db, "users", currentUser.uid, "friends", friendId);
+      const theirRef = doc(db, "users", friendId, "friends", currentUser.uid);
 
       await setDoc(myRef, {
         status: "pending",
@@ -116,68 +143,18 @@
         timestamp: Date.now()
       });
 
-      await setDoc(targetRef, {
+      await setDoc(theirRef, {
         status: "pending",
         sender: currentUser.uid,
         timestamp: Date.now()
       });
 
       alert("Friend request sent!");
-      document.getElementById("addUsername").value = "";
-      loadFriendData();
-    }
-
-    async function loadFriendData() {
-      const myFriends = collection(db, "users", currentUser.uid, "friends");
-      const snapshot = await getDocs(myFriends);
-
-      const requestsDiv = document.getElementById("friendRequests");
-      const friendsDiv = document.getElementById("friendsList");
-
-      requestsDiv.innerHTML = "";
-      friendsDiv.innerHTML = "";
-
-      snapshot.forEach((docSnap) => {
-        const friendId = docSnap.id;
-        const data = docSnap.data();
-
-        const box = document.createElement("div");
-        box.className = "friend-box";
-
-        if (data.status === "pending") {
-          if (data.sender === currentUser.uid) {
-            box.textContent = `Pending to: ${friendId}`;
-          } else {
-            box.innerHTML = `
-              ${friendId} sent you a request<br>
-              <button onclick="acceptRequest('${friendId}')">Accept</button>
-              <button onclick="rejectRequest('${friendId}')">Reject</button>
-            `;
-          }
-          requestsDiv.appendChild(box);
-        } else if (data.status === "accepted") {
-          box.innerHTML = `
-            ${friendId} <br>
-            <button onclick="messageFriend('${friendId}')">Message</button>
-          `;
-          friendsDiv.appendChild(box);
-        }
-      });
-    }
-
-    window.acceptRequest = async function (friendId) {
-      await updateDoc(doc(db, "users", currentUser.uid, "friends", friendId), { status: "accepted" });
-      await updateDoc(doc(db, "users", friendId, "friends", currentUser.uid), { status: "accepted" });
-      loadFriendData();
     };
 
-    window.rejectRequest = async function (friendId) {
-      await deleteDoc(doc(db, "users", currentUser.uid, "friends", friendId));
-      await deleteDoc(doc(db, "users", friendId, "friends", currentUser.uid));
-      loadFriendData();
-    };
-
-    window.messageFriend = function (friendId) {
+    window.messageUser = function () {
+      const friendId = sessionStorage.getItem("viewUserId");
+      if (!friendId || friendId === currentUser.uid) return;
       sessionStorage.setItem("dmUser", friendId);
       window.location.href = "messaging.html";
     };
