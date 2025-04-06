@@ -11,20 +11,16 @@
       text-align: center;
     }
 
-    h2 {
-      margin-bottom: 20px;
-    }
-
-    .user-card {
+    .user-card, .report-card {
       background: white;
       margin: 15px auto;
       padding: 15px;
       border-radius: 8px;
-      width: 320px;
+      width: 340px;
       box-shadow: 0 2px 5px rgba(0,0,0,0.1);
     }
 
-    .user-card p {
+    .user-card p, .report-card p {
       margin: 5px 0;
     }
 
@@ -33,7 +29,7 @@
       cursor: pointer;
     }
 
-    .user-card button {
+    button {
       margin: 5px;
       padding: 8px 14px;
       font-size: 14px;
@@ -46,14 +42,16 @@
     .unverify-btn { background: #ffc107; color: black; }
     .ban-btn { background: #dc3545; color: white; }
     .login-btn { background: #007bff; color: white; }
+    .role-btn { background: #6c757d; color: white; }
+    .show-reports-btn { background: #343a40; color: white; margin-bottom: 20px; }
     #backBtn {
-      margin-bottom: 20px;
       background: #444;
       color: white;
       padding: 10px 20px;
       border: none;
       border-radius: 6px;
       cursor: pointer;
+      margin-bottom: 20px;
     }
   </style>
 </head>
@@ -61,7 +59,9 @@
 
   <button id="backBtn" onclick="goBackToAdmin()">Back to My Account</button>
   <h2>Admin Panel</h2>
+  <button class="show-reports-btn" onclick="toggleReports()">View Reports</button>
   <div id="userList">Loading users...</div>
+  <div id="reportList" style="display:none;"><h3>All Reports</h3></div>
 
   <script type="module">
     import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.0/firebase-app.js";
@@ -89,6 +89,7 @@
     const auth = getAuth(app);
     const db = getFirestore(app);
     const userList = document.getElementById("userList");
+    const reportList = document.getElementById("reportList");
 
     let adminUid = null;
 
@@ -98,13 +99,13 @@
 
       const userDoc = await getDoc(doc(db, "users", user.uid));
       const data = userDoc.data();
-
       if (!data || (data.username || "").toLowerCase() !== "bunny") {
         alert("Access denied.");
         return window.location.href = "home.html";
       }
 
       loadUsers();
+      loadReports();
     });
 
     async function loadUsers() {
@@ -126,54 +127,91 @@
         verifyBtn.className = data.verified ? "unverify-btn" : "verify-btn";
         verifyBtn.onclick = () => toggleVerify(uid, data.verified);
 
-        div.innerHTML = `
-          <p><strong>Username:</strong> ${data.username || "N/A"}</p>
-          <p><strong>Display Name:</strong> ${data.displayName || "N/A"}</p>
-        `;
-        div.appendChild(emailEl);
-        div.appendChild(verifyBtn);
-
-        const banBtn = document.createElement("button");
-        banBtn.textContent = "Ban";
-        banBtn.className = "ban-btn";
-        banBtn.onclick = () => banUser(uid);
+        const roleBtn = document.createElement("button");
+        roleBtn.textContent = data.role === "developer" ? "Remove Developer" : "Make Developer";
+        roleBtn.className = "role-btn";
+        roleBtn.onclick = () => toggleDeveloper(uid, data.role);
 
         const loginBtn = document.createElement("button");
         loginBtn.textContent = "Account Login";
         loginBtn.className = "login-btn";
         loginBtn.onclick = () => spectateAs(uid);
 
-        div.appendChild(banBtn);
-        div.appendChild(loginBtn);
+        const banBtn = document.createElement("button");
+        banBtn.textContent = "Ban";
+        banBtn.className = "ban-btn";
+        banBtn.onclick = () => banUser(uid);
 
+        div.innerHTML = `
+          <p><strong>Username:</strong> ${data.username || "N/A"}</p>
+          <p><strong>Display Name:</strong> ${data.displayName || "N/A"}</p>
+        `;
+        div.appendChild(emailEl);
+        div.appendChild(verifyBtn);
+        div.appendChild(roleBtn);
+        div.appendChild(loginBtn);
+        div.appendChild(banBtn);
         userList.appendChild(div);
       });
     }
 
-    window.toggleVerify = async function (uid, currentStatus) {
-      await updateDoc(doc(db, "users", uid), {
-        verified: !currentStatus
+    async function loadReports() {
+      const reportsSnapshot = await getDocs(collection(db, "reports"));
+      const userSnapshot = await getDocs(collection(db, "users"));
+      const users = {};
+
+      userSnapshot.forEach(doc => users[doc.id] = doc.data());
+
+      reportList.innerHTML = '<h3>All Reports</h3>';
+      reportsSnapshot.forEach(doc => {
+        const data = doc.data();
+        const reporter = users[data.reporterUid]?.username || "Unknown";
+        const reported = users[data.reportedUid]?.username || "Unknown";
+
+        const div = document.createElement("div");
+        div.className = "report-card";
+        div.innerHTML = `
+          <p><strong>Reporter:</strong> ${reporter}</p>
+          <p><strong>Reported:</strong> ${reported}</p>
+          <p><strong>Reason:</strong> ${data.reason || "No reason"}</p>
+          <p><small>${new Date(data.timestamp).toLocaleString()}</small></p>
+        `;
+        reportList.appendChild(div);
       });
+    }
+
+    window.toggleReports = function () {
+      reportList.style.display = reportList.style.display === "none" ? "block" : "none";
+    };
+
+    window.toggleVerify = async function (uid, currentStatus) {
+      await updateDoc(doc(db, "users", uid), { verified: !currentStatus });
+      loadUsers();
+    };
+
+    window.toggleDeveloper = async function (uid, currentRole) {
+      const newRole = currentRole === "developer" ? "" : "developer";
+      await updateDoc(doc(db, "users", uid), { role: newRole });
       loadUsers();
     };
 
     window.banUser = async function (uid) {
       if (confirm("Are you sure you want to ban this user?")) {
         await deleteDoc(doc(db, "users", uid));
-        alert("User banned (deleted).");
+        alert("User banned.");
         loadUsers();
       }
     };
 
     window.spectateAs = function (uid) {
       sessionStorage.setItem("adminViewingAs", uid);
-      alert("Entering spectate mode for user.");
+      alert("Now spectating this user.");
       window.location.href = "home.html";
     };
 
     window.goBackToAdmin = function () {
       sessionStorage.removeItem("adminViewingAs");
-      alert("Returned to your own account.");
+      alert("Back to your account.");
       window.location.href = "home.html";
     };
   </script>
