@@ -1,71 +1,156 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8">
-  <title>User Profile</title>
+  <meta charset="UTF-8" />
+  <title>Server</title>
   <style>
     body {
-      background-color: #1e1e1e;
-      color: white;
-      text-align: center;
-      font-family: Arial;
+      margin: 0;
+      font-family: Arial, sans-serif;
+      display: flex;
+      height: 100vh;
+      overflow: hidden;
     }
-    .profile-img {
-      width: 100px;
-      height: 100px;
-      border-radius: 50%;
-      object-fit: cover;
-      margin-top: 30px;
-    }
-    .badge {
-      margin-left: 5px;
-      padding: 2px 5px;
-      border-radius: 4px;
-      font-size: 12px;
-    }
-    .verified { background: #4caf50; }
-    .dev { background: #00bcd4; }
-    .admin { background: #ff5722; }
 
-    .btn {
-      margin: 10px;
-      padding: 10px 20px;
-      font-size: 16px;
-      border: none;
-      border-radius: 6px;
-      background-color: #444;
+    .sidebar {
+      width: 250px;
+      background-color: #2f3136;
       color: white;
+      padding: 10px;
+      display: flex;
+      flex-direction: column;
+    }
+
+    .sidebar button {
+      background-color: #5865F2;
+      color: white;
+      border: none;
+      padding: 10px;
+      margin: 5px 0;
+      border-radius: 4px;
       cursor: pointer;
     }
-    .btn.disabled {
-      background-color: #777;
-      cursor: not-allowed;
+
+    .server-name {
+      margin-top: 20px;
+      margin-left: 10px;
+      font-weight: bold;
+      font-size: 18px;
+      display: flex;
+      align-items: center;
+    }
+
+    .server-name img {
+      width: 24px;
+      height: 24px;
+      margin-right: 8px;
+      border-radius: 4px;
+    }
+
+    .channel-list {
+      margin-top: 20px;
+    }
+
+    .channel {
+      margin: 5px 0;
+      cursor: pointer;
+    }
+
+    .main {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      background-color: #f4f4f4;
+    }
+
+    .chat-box {
+      flex: 1;
+      padding: 10px;
+      overflow-y: scroll;
+    }
+
+    .input-box {
+      display: flex;
+      padding: 10px;
+      background: white;
+    }
+
+    .input-box input {
+      flex: 1;
+      padding: 10px;
+      font-size: 16px;
+    }
+
+    .input-box button {
+      padding: 10px;
+      background: #5865F2;
+      color: white;
+      border: none;
+      margin-left: 10px;
+    }
+
+    .message {
+      background: white;
+      margin-bottom: 10px;
+      padding: 10px;
+      border-radius: 4px;
+    }
+
+    .pfp {
+      width: 24px;
+      height: 24px;
+      border-radius: 50%;
+      vertical-align: middle;
+      cursor: pointer;
+    }
+
+    .user-link {
+      cursor: pointer;
+      color: #5865F2;
+    }
+
+    .timestamp {
+      font-size: 12px;
+      color: #888;
     }
   </style>
 </head>
 <body>
-  <h2>User Profile</h2>
-  <img id="pfp" class="profile-img" src="default.png" alt="Profile Picture">
-  <h3 id="displayName">Display Name</h3>
-  <p id="username">@username <span id="badges"></span></p>
-  <p id="bio">Bio goes here...</p>
+  <div class="sidebar">
+    <button onclick="createTextChannel()">+ Text Channel</button>
+    <button onclick="createVoiceChannel()">+ Voice Channel</button>
+    <button onclick="openServerSettings()">Server Settings</button>
+    <button onclick="invite()">Invite</button>
+    <div class="server-name" id="serverName">
+      <img src="" alt="icon" id="serverIcon" />
+      Loading...
+    </div>
+    <div class="channel-list" id="channelList">Channels loading...</div>
+  </div>
 
-  <div id="actions">
-    <button class="btn" id="friendBtn">Add Friend</button>
-    <button class="btn" id="messageBtn">Message</button>
-    <button class="btn" id="reportBtn">Report</button>
-    <button class="btn" id="blockBtn">Block</button>
+  <div class="main">
+    <div class="chat-box" id="chatBox">Select a channel to view messages.</div>
+    <div class="input-box">
+      <input type="text" id="messageInput" placeholder="Type a message..." />
+      <button onclick="sendMessage()">Send</button>
+    </div>
   </div>
 
   <script type="module">
     import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.0/firebase-app.js";
+    import { getAuth, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.0/firebase-auth.js";
     import {
-      getFirestore, doc, getDoc, updateDoc,
-      arrayUnion, arrayRemove
+      getFirestore,
+      doc,
+      getDoc,
+      getDocs,
+      collection,
+      query,
+      where,
+      addDoc,
+      updateDoc,
+      onSnapshot
     } from "https://www.gstatic.com/firebasejs/11.6.0/firebase-firestore.js";
-    import {
-      getAuth, onAuthStateChanged
-    } from "https://www.gstatic.com/firebasejs/11.6.0/firebase-auth.js";
 
     const firebaseConfig = {
       apiKey: "AIzaSyCGGosrc7Ikl1xPnZri5sHuMvEUBB1f2YU",
@@ -77,120 +162,103 @@
     };
 
     const app = initializeApp(firebaseConfig);
+    const auth = getAuth(app);
     const db = getFirestore(app);
-    const auth = getAuth();
-
-    const uid = sessionStorage.getItem("viewingUser");
-    if (!uid) {
-      document.body.innerHTML = "<h2>Error: No user selected</h2>";
-      throw new Error("No user set in sessionStorage");
-    }
 
     let currentUserId = null;
+    let currentServerId = sessionStorage.getItem("currentServer");
+    let currentChannelId = null;
+
+    const chatBox = document.getElementById("chatBox");
+    const messageInput = document.getElementById("messageInput");
+    const serverName = document.getElementById("serverName");
+    const serverIcon = document.getElementById("serverIcon");
+    const channelList = document.getElementById("channelList");
 
     onAuthStateChanged(auth, async (user) => {
       if (!user) return location.href = "login.html";
       currentUserId = user.uid;
-
-      const docSnap = await getDoc(doc(db, "users", uid));
-      if (!docSnap.exists()) return alert("User not found");
-
-      const data = docSnap.data();
-      document.getElementById("pfp").src = data.profile || "default.png";
-      document.getElementById("displayName").textContent = data.displayName || "No Name";
-      document.getElementById("username").textContent = `@${data.username}`;
-      document.getElementById("bio").textContent = data.bio || "No bio provided.";
-
-      const badges = document.getElementById("badges");
-      if (data.verified) badges.innerHTML += `<span class="badge verified">✔️</span>`;
-      if (data.role === "developer") badges.innerHTML += `<span class="badge dev">Dev</span>`;
-      if (data.role === "admin") badges.innerHTML += `<span class="badge admin">Admin</span>`;
-
-      const friendBtn = document.getElementById("friendBtn");
-      const blockBtn = document.getElementById("blockBtn");
-      const messageBtn = document.getElementById("messageBtn");
-      const reportBtn = document.getElementById("reportBtn");
-
-      if (uid === currentUserId) {
-        friendBtn.classList.add("disabled");
-        friendBtn.disabled = true;
-        messageBtn.disabled = true;
-        reportBtn.disabled = true;
-        blockBtn.textContent = "Unblock";
-        blockBtn.classList.add("disabled");
-        return;
-      }
-
-      const currentDoc = await getDoc(doc(db, "users", currentUserId));
-      const currentData = currentDoc.data();
-
-      const isBlocked = currentData.blocked?.includes(uid);
-      const isFriend = currentData.friends?.includes(uid);
-      const pending = currentData.friendRequestsSent?.includes(uid);
-
-      if (isBlocked) {
-        friendBtn.classList.add("disabled");
-        friendBtn.textContent = "Blocked";
-        messageBtn.disabled = true;
-        reportBtn.disabled = true;
-        blockBtn.textContent = "Unblock";
-      } else {
-        if (isFriend) {
-          friendBtn.textContent = "Unfriend";
-        } else if (pending) {
-          friendBtn.textContent = "Pending...";
-          friendBtn.classList.add("disabled");
-          friendBtn.disabled = true;
-        } else {
-          friendBtn.textContent = "Add Friend";
-        }
-        blockBtn.textContent = "Block";
-      }
-
-      friendBtn.onclick = async () => {
-        if (friendBtn.classList.contains("disabled")) return;
-        await updateDoc(doc(db, "users", currentUserId), {
-          friendRequestsSent: arrayUnion(uid)
-        });
-        await updateDoc(doc(db, "users", uid), {
-          friendRequests: arrayUnion(currentUserId)
-        });
-        alert("Friend request sent!");
-        friendBtn.textContent = "Pending...";
-        friendBtn.disabled = true;
-      };
-
-      blockBtn.onclick = async () => {
-        if (isBlocked) {
-          await updateDoc(doc(db, "users", currentUserId), {
-            blocked: arrayRemove(uid)
-          });
-          alert("User unblocked.");
-          location.reload();
-        } else {
-          await updateDoc(doc(db, "users", currentUserId), {
-            blocked: arrayUnion(uid)
-          });
-          alert("User blocked.");
-          location.reload();
-        }
-      };
-
-      messageBtn.onclick = () => {
-        if (!isFriend) {
-          return alert("System Error: we’re sorry but you are not friended to this person so you cannot message them anything until you added them. Please try again later.");
-        }
-        sessionStorage.setItem("dmUser", uid);
-        location.href = "messaging.html";
-      };
-
-      reportBtn.onclick = async () => {
-        await updateDoc(doc(db, "reports", uid), {
-          reportedBy: arrayUnion(currentUserId)
-        });
-        alert("User reported.");
-      };
+      loadServer();
     });
+
+    async function loadServer() {
+      const serverDoc = await getDoc(doc(db, "servers", currentServerId));
+      const data = serverDoc.data();
+      serverName.innerText = data.name;
+      serverIcon.src = data.serverIcon || "default.png";
+      loadChannels();
+    }
+
+    async function loadChannels() {
+      const q = query(collection(db, "servers", currentServerId, "channels"));
+      const snap = await getDocs(q);
+      channelList.innerHTML = "";
+      snap.forEach(doc => {
+        const div = document.createElement("div");
+        div.className = "channel";
+        div.textContent = `# ${doc.data().name}`;
+        div.onclick = () => openChannel(doc.id);
+        channelList.appendChild(div);
+      });
+    }
+
+    function openChannel(channelId) {
+      currentChannelId = channelId;
+      const messagesRef = collection(db, "servers", currentServerId, "channels", channelId, "messages");
+
+      chatBox.innerHTML = "";
+      onSnapshot(messagesRef, async (snapshot) => {
+        chatBox.innerHTML = "";
+        for (let docSnap of snapshot.docs) {
+          const msg = docSnap.data();
+          const userSnap = await getDoc(doc(db, "users", msg.uid));
+          const userData = userSnap.data();
+
+          chatBox.innerHTML += `
+            <div class="message">
+              <img src="${userData.profile || 'default.png'}" class="pfp" onclick="viewUser('${msg.uid}')">
+              <strong class="user-link" onclick="viewUser('${msg.uid}')">${userData.username}</strong>: 
+              ${msg.content}
+              <div class="timestamp">${new Date(msg.timestamp).toLocaleString()}</div>
+            </div>
+          `;
+        }
+      });
+    }
+
+    window.sendMessage = async function () {
+      const content = messageInput.value.trim();
+      if (!content || !currentChannelId) return;
+
+      await addDoc(collection(db, "servers", currentServerId, "channels", currentChannelId, "messages"), {
+        uid: currentUserId,
+        content,
+        timestamp: Date.now()
+      });
+
+      messageInput.value = "";
+    };
+
+    window.viewUser = function (uid) {
+      sessionStorage.setItem("viewingUser", uid);
+      location.href = "user.html";
+    };
+
+    window.createTextChannel = function () {
+      alert("Only server owner can create channels (to be implemented).");
+    };
+
+    window.createVoiceChannel = function () {
+      alert("Only server owner can create voice channels (to be implemented).");
+    };
+
+    window.openServerSettings = function () {
+      alert("Server settings panel not yet implemented.");
+    };
+
+    window.invite = function () {
+      alert("Invite system coming soon.");
+    };
   </script>
 </body>
 </html>
