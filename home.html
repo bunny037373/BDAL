@@ -72,6 +72,7 @@
   <div id="serverList">Loading...</div>
   <button onclick="createServer()">+ Create Server</button>
   <button onclick="joinServer()">Join Server</button>
+  <button onclick="location.href='user.html'">Add Friend</button>
   <button onclick="logout()">Logout</button>
 
   <div class="bottom-nav">
@@ -105,7 +106,6 @@
     const app = initializeApp(firebaseConfig);
     const auth = getAuth(app);
     const db = getFirestore(app);
-
     const serverList = document.getElementById("serverList");
 
     onAuthStateChanged(auth, async (user) => {
