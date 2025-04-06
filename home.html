@@ -76,9 +76,45 @@
       border: none;
       border-radius: 6px;
     }
+
+    .notif-container {
+      position: fixed;
+      top: 10px;
+      right: 20px;
+    }
+
+    .notif-button {
+      background: #5865F2;
+      color: white;
+      border: none;
+      padding: 10px 16px;
+      border-radius: 6px;
+      font-size: 14px;
+      cursor: pointer;
+      position: relative;
+    }
+
+    .notif-badge {
+      position: absolute;
+      top: -8px;
+      right: -8px;
+      background: red;
+      color: white;
+      font-size: 12px;
+      border-radius: 50%;
+      padding: 2px 6px;
+      display: none;
+    }
   </style>
 </head>
 <body>
+
+  <div class="notif-container">
+    <button class="notif-button" onclick="location.href='notifications.html'">
+      Notifications
+      <span id="notifCount" class="notif-badge">0</span>
+    </button>
+  </div>
 
   <div id="spectateBanner"></div>
   <h1 id="welcomeText">Loading...</h1>
@@ -128,6 +164,7 @@
     const welcomeText = document.getElementById("welcomeText");
     const serverList = document.getElementById("serverList");
     const spectateBanner = document.getElementById("spectateBanner");
+    const notifBadge = document.getElementById("notifCount");
 
     onAuthStateChanged(auth, async (user) => {
       if (!user) return window.location.href = "login.html";
@@ -142,6 +179,13 @@
       if (viewingAs) {
         spectateBanner.textContent = `SPECTATING AS ${userData.username || "Unknown"} (Read/Delete Only)`;
         spectateBanner.style.display = "block";
+      }
+
+      const requestsSnap = await getDocs(collection(db, "users", uidToUse, "requests"));
+      const count = requestsSnap.size;
+      if (count > 0) {
+        notifBadge.style.display = "inline-block";
+        notifBadge.textContent = count > 999 ? "999+" : count;
       }
 
       loadServers(uidToUse);
