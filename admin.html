@@ -141,7 +141,7 @@
         const loginBtn = document.createElement("button");
         loginBtn.textContent = "Account Login";
         loginBtn.className = "login-btn";
-        loginBtn.onclick = () => alert("This no longer logs in as that user. Staying on admin.");
+        loginBtn.onclick = () => spectateAs(uid);
 
         div.appendChild(banBtn);
         div.appendChild(loginBtn);
@@ -165,7 +165,15 @@
       }
     };
 
+    window.spectateAs = function (uid) {
+      sessionStorage.setItem("adminViewingAs", uid);
+      alert("Entering spectate mode for user.");
+      window.location.href = "home.html";
+    };
+
     window.goBackToAdmin = function () {
+      sessionStorage.removeItem("adminViewingAs");
+      alert("Returned to your own account.");
       window.location.href = "home.html";
     };
   </script>
