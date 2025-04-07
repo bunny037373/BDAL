@@ -3,9 +3,62 @@
 <head>
   <meta charset="UTF-8">
   <title>Login</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      text-align: center;
+      background: white;
+      margin: 0;
+      padding-top: 100px;
+    }
+
+    .form-container {
+      display: inline-block;
+      background: #f4f4f4;
+      padding: 30px;
+      border-radius: 10px;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.2);
+    }
+
+    input {
+      padding: 12px;
+      width: 250px;
+      font-size: 16px;
+      margin-bottom: 15px;
+      border: 1px solid #ccc;
+      border-radius: 6px;
+    }
+
+    button {
+      padding: 12px 24px;
+      font-size: 16px;
+      background-color: #5865F2;
+      color: white;
+      border: none;
+      border-radius: 6px;
+      cursor: pointer;
+    }
+
+    button:hover {
+      background-color: #4752c4;
+    }
+
+    .toggle-btn {
+      background-color: gray;
+      margin-top: 10px;
+    }
+  </style>
+
   <script type="module">
     import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.0/firebase-app.js";
     import { getAuth, signInWithEmailAndPassword } from "https://www.gstatic.com/firebasejs/11.6.0/firebase-auth.js";
+    import {
+      getFirestore,
+      collection,
+      query,
+      where,
+      getDocs
+    } from "https://www.gstatic.com/firebasejs/11.6.0/firebase-firestore.js";
 
     const firebaseConfig = {
       apiKey: "AIzaSyCGGosrc7Ikl1xPnZri5sHuMvEUBB1f2YU",
@@ -19,28 +72,63 @@
 
     const app = initializeApp(firebaseConfig);
     const auth = getAuth(app);
+    const db = getFirestore(app);
 
-    window.logIn = function () {
-      const email = document.getElementById("email").value;
+    let usernameMode = false;
+
+    window.toggleLoginMode = function () {
+      usernameMode = !usernameMode;
+      document.getElementById("email").style.display = usernameMode ? "none" : "block";
+      document.getElementById("username").style.display = usernameMode ? "block" : "none";
+      document.getElementById("toggleModeBtn").textContent = usernameMode ? "Back to Email Login" : "Login with Username";
+    };
+
+    window.logIn = async function () {
       const password = document.getElementById("password").value;
 
-      signInWithEmailAndPassword(auth, email, password)
-        .then((userCredential) => {
-          const user = userCredential.user;
-          sessionStorage.setItem("currentUser", user.uid);
+      if (usernameMode) {
+        const username = document.getElementById("username").value.trim().toLowerCase();
+        if (!username || !password) return alert("Enter username and password.");
+
+        const q = query(collection(db, "users"), where("username", "==", username));
+        const snap = await getDocs(q);
+
+        if (snap.empty) return alert("Username not found.");
+        const userData = snap.docs[0].data();
+        const fakeEmail = username + "@placeholder.mail";
+
+        try {
+          const cred = await signInWithEmailAndPassword(auth, fakeEmail, password);
+          sessionStorage.setItem("currentUser", cred.user.uid);
           alert("Logged in!");
           window.location.href = "home.html";
-        })
-        .catch((error) => {
-          alert("Login error: " + error.message);
-        });
+        } catch (err) {
+          alert("Login error: " + err.message);
+        }
+      } else {
+        const email = document.getElementById("email").value;
+        if (!email || !password) return alert("Enter email and password.");
+
+        try {
+          const cred = await signInWithEmailAndPassword(auth, email, password);
+          sessionStorage.setItem("currentUser", cred.user.uid);
+          alert("Logged in!");
+          window.location.href = "home.html";
+        } catch (err) {
+          alert("Login error: " + err.message);
+        }
+      }
     };
   </script>
 </head>
 <body>
-  <h2>Login</h2>
-  <input type="email" id="email" placeholder="Email" /><br><br>
-  <input type="password" id="password" placeholder="Password" /><br><br>
-  <button onclick="logIn()">Login</button>
+  <div class="form-container">
+    <h2>Login</h2>
+    <input type="email" id="email" placeholder="Email"><br>
+    <input type="text" id="username" placeholder="Username" style="display:none;"><br>
+    <input type="password" id="password" placeholder="Password"><br>
+    <button onclick="logIn()">Login</button><br><br>
+    <button id="toggleModeBtn" class="toggle-btn" onclick="toggleLoginMode()">Login with Username</button>
+  </div>
 </body>
 </html>
