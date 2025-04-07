@@ -93,14 +93,10 @@
   <script type="module">
     import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.0/firebase-app.js";
     import {
-      getFirestore,
-      doc,
-      getDoc,
-      updateDoc
+      getFirestore, doc, getDoc, updateDoc
     } from "https://www.gstatic.com/firebasejs/11.6.0/firebase-firestore.js";
     import {
-      getAuth,
-      onAuthStateChanged
+      getAuth, onAuthStateChanged
     } from "https://www.gstatic.com/firebasejs/11.6.0/firebase-auth.js";
 
     const firebaseConfig = {
@@ -122,11 +118,11 @@
       if (!user) return location.href = "login.html";
       currentUser = user;
 
-      const docRef = doc(db, "users", user.uid);
-      const docSnap = await getDoc(docRef);
+      const userRef = doc(db, "users", user.uid);
+      const userSnap = await getDoc(userRef);
 
-      if (docSnap.exists()) {
-        const data = docSnap.data();
+      if (userSnap.exists()) {
+        const data = userSnap.data();
         document.getElementById("displayName").value = data.displayName || "";
         document.getElementById("username").value = data.username || "";
         document.getElementById("bio").value = data.bio || "";
@@ -143,12 +139,13 @@
       if (file) reader.readAsDataURL(file);
     });
 
-    async function saveProfile() {
+    window.saveProfile = async function () {
       const displayName = document.getElementById("displayName").value.trim();
       const bio = document.getElementById("bio").value.trim();
       const pfp = document.getElementById("pfp").src;
 
-      await updateDoc(doc(db, "users", currentUser.uid), {
+      const userRef = doc(db, "users", currentUser.uid);
+      await updateDoc(userRef, {
         displayName,
         bio,
         pfp
