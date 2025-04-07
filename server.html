@@ -62,7 +62,7 @@
     }
 
     .channel:hover .channel-controls {
-      display: block;
+      display: flex;
     }
 
     .channel-controls {
@@ -70,14 +70,18 @@
       right: 5px;
       top: 5px;
       display: none;
+      gap: 5px;
     }
 
     .channel-controls button {
       background: none;
-      color: white;
       border: none;
+      color: white;
       cursor: pointer;
-      margin-left: 4px;
+    }
+
+    .channel-controls .delete {
+      color: red;
     }
 
     .main {
@@ -100,22 +104,7 @@
       box-shadow: 0 1px 3px rgba(0,0,0,0.1);
     }
 
-    .message img.pfp {
-      width: 40px;
-      height: 40px;
-      border-radius: 50%;
-      object-fit: cover;
-      margin-right: 10px;
-      cursor: pointer;
-    }
-
-    .message .username {
-      font-weight: bold;
-      margin-right: 5px;
-      cursor: pointer;
-    }
-
-    .timestamp {
+    .message .timestamp {
       font-size: 12px;
       color: gray;
     }
@@ -143,46 +132,6 @@
       margin-left: 10px;
       cursor: pointer;
     }
-
-    .members {
-      width: 220px;
-      background: #e0e0e0;
-      padding: 10px;
-      overflow-y: auto;
-    }
-
-    .member {
-      display: flex;
-      align-items: center;
-      margin: 8px 0;
-      cursor: pointer;
-    }
-
-    .member img {
-      width: 30px;
-      height: 30px;
-      border-radius: 50%;
-      object-fit: cover;
-      margin-right: 8px;
-    }
-
-    .verified-check {
-      color: #00b0f4;
-      font-weight: bold;
-      margin-left: 5px;
-    }
-
-    .msg-controls {
-      float: right;
-    }
-
-    .msg-controls button {
-      margin-left: 5px;
-      background: none;
-      color: #888;
-      border: none;
-      cursor: pointer;
-    }
   </style>
 </head>
 <body>
@@ -206,19 +155,13 @@
     </form>
   </div>
 
-  <div class="members" id="memberList">
-    <h4>Members</h4>
-  </div>
-
   <script type="module">
     import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.0/firebase-app.js";
     import {
       getFirestore, doc, getDoc, setDoc, updateDoc, deleteDoc,
       collection, addDoc, query, orderBy, onSnapshot, getDocs
     } from "https://www.gstatic.com/firebasejs/11.6.0/firebase-firestore.js";
-    import {
-      getAuth, onAuthStateChanged
-    } from "https://www.gstatic.com/firebasejs/11.6.0/firebase-auth.js";
+    import { getAuth, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.0/firebase-auth.js";
 
     const app = initializeApp({
       apiKey: "AIzaSyCGGosrc7Ikl1xPnZri5sHuMvEUBB1f2YU",
@@ -234,7 +177,6 @@
     const chat = document.getElementById("chat");
     const messageForm = document.getElementById("messageForm");
     const messageInput = document.getElementById("messageInput");
-    const memberList = document.getElementById("memberList");
     const channelList = document.getElementById("channelList");
     const serverName = document.getElementById("serverName");
     const serverIcon = document.getElementById("serverIcon");
@@ -259,7 +201,6 @@
       }
 
       await loadChannels();
-      await loadMembers();
       await loadMessages();
     });
 
@@ -284,9 +225,10 @@
           const controls = document.createElement("div");
           controls.className = "channel-controls";
           controls.innerHTML = `
-            <button onclick="renameChannel('${name}')">✎</button>
-            <button onclick="moveChannel(${index}, -1)">↑</button>
-            <button onclick="moveChannel(${index}, 1)">↓</button>
+            <button onclick="event.stopPropagation(); renameChannel('${name}')">✎</button>
+            <button onclick="event.stopPropagation(); moveChannel(${index}, -1)">↑</button>
+            <button onclick="event.stopPropagation(); moveChannel(${index}, 1)">↓</button>
+            <button class="delete" onclick="event.stopPropagation(); deleteChannel('${name}')">🗑️</button>
           `;
           div.appendChild(controls);
         }
@@ -314,30 +256,30 @@
       renderChannels();
     };
 
+    window.deleteChannel = async (name) => {
+      if (!confirm(`Delete channel "${name}"?`)) return;
+      await deleteDoc(doc(db, "servers", serverId, "channels", name));
+      channels = channels.filter(c => c !== name);
+      if (currentChannel === name) currentChannel = channels[0] || "";
+      renderChannels();
+      loadMessages();
+    };
+
     async function loadMessages() {
+      if (!currentChannel) return;
       const q = query(collection(db, "servers", serverId, "channels", currentChannel, "messages"), orderBy("timestamp"));
       onSnapshot(q, async (snap) => {
         chat.innerHTML = "";
         for (const docSnap of snap.docs) {
           const msg = docSnap.data();
-          const id = docSnap.id;
           const userDoc = await getDoc(doc(db, "users", msg.sender));
           const user = userDoc.data() || {};
           const time = msg.timestamp?.toDate ? msg.timestamp.toDate().toLocaleString() : "";
 
-          let controls = "";
-          if (msg.sender === currentUser.uid) {
-            controls = `<button onclick="editMsg('${id}')">✎</button><button onclick="delMsg('${id}')">🗑️</button>`;
-          } else if (currentUser.uid === serverData.owner) {
-            controls = `<button onclick="delMsg('${id}')">🗑️</button>`;
-          }
-
           chat.innerHTML += `
             <div class="message">
-              <img src="${user.profilePicture || 'default.png'}" class="pfp" data-uid="${msg.sender}">
-              <span class="username" data-uid="${msg.sender}">${user.displayName || user.username}${user.verified ? ' <span class="verified-check">✔</span>' : ''}</span>
-              <div class="msg-controls">${controls}</div>
-              <div class="text">${msg.text}</div>
+              <b>${user.displayName || user.username}</b><br>
+              <div>${msg.text}</div>
               <div class="timestamp">${time}</div>
             </div>
           `;
@@ -346,7 +288,7 @@
       });
     }
 
-    messageForm.onsubmit = async (e) => {
+    messageForm.addEventListener("submit", async (e) => {
       e.preventDefault();
       const text = messageInput.value.trim();
       if (!text) return;
@@ -358,19 +300,14 @@
       });
 
       messageInput.value = "";
-    };
+    });
 
-    window.delMsg = async (id) => {
-      await deleteDoc(doc(db, "servers", serverId, "channels", currentChannel, "messages", id));
-    };
-
-    window.editMsg = async (id) => {
-      const ref = doc(db, "servers", serverId, "channels", currentChannel, "messages", id);
-      const snap = await getDoc(ref);
-      const old = snap.data().text;
-      const update = prompt("Edit message:", old);
-      if (update && update !== old) await updateDoc(ref, { text: update });
-    };
+    messageInput.addEventListener("keydown", function (e) {
+      if (e.key === "Enter" && !e.shiftKey) {
+        e.preventDefault();
+        messageForm.dispatchEvent(new Event("submit"));
+      }
+    });
 
     window.inviteToServer = async () => {
       if (currentUser.uid === serverData.owner && serverData.verified) {
@@ -382,14 +319,6 @@
       } else {
         alert("Invite code: " + (serverData.inviteCode || "Not available"));
       }
-    };
-
-    addChannelBtn.onclick = async () => {
-      const name = prompt("Enter channel name:");
-      if (!name) return;
-      await setDoc(doc(db, "servers", serverId, "channels", name), {});
-      channels.push(name);
-      renderChannels();
     };
 
     settingsBtn.onclick = async () => {
@@ -410,40 +339,6 @@
       };
       input.click();
     };
-
-    async function loadMembers() {
-      const members = serverData.members || [];
-      memberList.innerHTML = "<h4>Members</h4>";
-      for (const uid of members) {
-        const userSnap = await getDoc(doc(db, "users", uid));
-        if (!userSnap.exists()) continue;
-        const user = userSnap.data();
-
-        const div = document.createElement("div");
-        div.className = "member";
-        div.innerHTML = `
-          <img src="${user.profilePicture || 'default.png'}">
-          <span>${user.displayName || user.username}</span>
-          ${user.verified ? '<span class="verified-check">✔</span>' : ''}
-        `;
-        div.onclick = () => {
-          sessionStorage.setItem("viewingUser", uid);
-          location.href = "user.html";
-        };
-
-        memberList.appendChild(div);
-      }
-    }
-
-    document.addEventListener("click", (e) => {
-      if (e.target.matches(".pfp, .username")) {
-        const uid = e.target.getAttribute("data-uid");
-        if (uid) {
-          sessionStorage.setItem("viewingUser", uid);
-          location.href = "user.html";
-        }
-      }
-    });
   </script>
 </body>
 </html>
