@@ -2,89 +2,110 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <title>Your Profile</title>
+  <title>My Profile</title>
   <style>
     body {
       font-family: Arial, sans-serif;
+      background: white;
+      color: #222;
       text-align: center;
-      background: #f0f0f0;
+      margin: 0;
       padding-top: 40px;
     }
 
+    h1 {
+      margin-bottom: 20px;
+    }
+
     img {
-      width: 100px;
-      height: 100px;
+      width: 120px;
+      height: 120px;
       border-radius: 50%;
       object-fit: cover;
       border: 2px solid #ccc;
-      margin-bottom: 15px;
+      margin-bottom: 10px;
     }
 
-    input {
+    input, textarea {
       display: block;
       margin: 10px auto;
       padding: 10px;
       font-size: 16px;
       width: 80%;
       max-width: 300px;
+      border: 1px solid #ccc;
+      border-radius: 6px;
     }
 
     button {
-      padding: 10px 20px;
-      font-size: 16px;
-      background-color: #5865F2;
+      background: #5865F2;
       color: white;
       border: none;
+      padding: 12px 25px;
+      font-size: 16px;
       border-radius: 6px;
       cursor: pointer;
-      margin-top: 10px;
+      margin: 10px 5px;
     }
 
     button:hover {
-      background-color: #4752c4;
+      background: #4752c4;
     }
 
-    .nav {
+    .bottom-nav {
       position: fixed;
       bottom: 0;
       width: 100%;
-      background: #202225;
+      background: #000;
       display: flex;
       justify-content: space-around;
       padding: 15px 0;
     }
 
-    .nav button {
-      font-size: 16px;
+    .bottom-nav button {
+      background: #5865F2;
+      color: white;
+      border: none;
+      border-radius: 5px;
       padding: 10px 20px;
+      font-size: 14px;
+    }
+
+    .bottom-nav button:hover {
+      background-color: #4752c4;
     }
   </style>
 </head>
 <body>
-  <h2>User Profile</h2>
-  <p id="userDisplay">Loading...</p>
-
-  <img id="pfpImg" src="default.png" alt="Your Profile Picture"><br>
-  <input type="file" id="pfpInput" accept="image/*"><br>
-  <input type="text" id="displayName" placeholder="Display Name"><br>
+  <h1>My Profile</h1>
+  <img id="pfpImg" src="default.png" alt="Profile Picture">
+  <input type="file" id="upload" accept="image/*">
+  <input type="text" id="displayName" placeholder="Display Name">
+  <input type="text" id="username" placeholder="Username" disabled>
+  <textarea id="aboutMe" rows="4" placeholder="Write something about yourself..."></textarea>
 
   <button onclick="saveProfile()">Save Profile</button>
   <button onclick="logOut()">Logout</button>
 
-  <div class="nav">
+  <div class="bottom-nav" id="navBar">
     <button onclick="location.href='home.html'">Home</button>
+    <button onclick="location.href='friendlist.html'">Friends</button>
     <button onclick="location.href='profile.html'">Profile</button>
   </div>
 
   <script type="module">
     import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.0/firebase-app.js";
-    import { getAuth, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/11.6.0/firebase-auth.js";
     import {
       getFirestore,
       doc,
       getDoc,
       setDoc
     } from "https://www.gstatic.com/firebasejs/11.6.0/firebase-firestore.js";
+    import {
+      getAuth,
+      onAuthStateChanged,
+      signOut
+    } from "https://www.gstatic.com/firebasejs/11.6.0/firebase-auth.js";
 
     const firebaseConfig = {
       apiKey: "AIzaSyCGGosrc7Ikl1xPnZri5sHuMvEUBB1f2YU",
@@ -99,50 +120,61 @@
     const auth = getAuth(app);
     const db = getFirestore(app);
 
-    const userDisplay = document.getElementById("userDisplay");
     const pfpImg = document.getElementById("pfpImg");
     const displayNameInput = document.getElementById("displayName");
-    const pfpInput = document.getElementById("pfpInput");
+    const usernameInput = document.getElementById("username");
+    const aboutMeInput = document.getElementById("aboutMe");
+    const uploadInput = document.getElementById("upload");
 
-    let currentUser = null;
+    let currentUser;
 
     onAuthStateChanged(auth, async (user) => {
-      if (!user) {
-        window.location.href = "login.html";
-        return;
-      }
-
+      if (!user) return location.href = "login.html";
       currentUser = user;
-      sessionStorage.setItem("currentUser", user.uid);
-      userDisplay.textContent = `Logged in as: ${user.email}`;
 
-      const userDoc = await getDoc(doc(db, "users", user.uid));
-      if (userDoc.exists()) {
-        const data = userDoc.data();
-        if (data.profilePicture) pfpImg.src = data.profilePicture;
-        if (data.displayName) displayNameInput.value = data.displayName;
+      const docRef = doc(db, "users", user.uid);
+      const docSnap = await getDoc(docRef);
+
+      if (docSnap.exists()) {
+        const data = docSnap.data();
+        displayNameInput.value = data.displayName || "";
+        usernameInput.value = data.username || "";
+        aboutMeInput.value = data.aboutMe || "";
+        pfpImg.src = data.profilePicture || "default.png";
+
+        // If user is Bunny, show admin button
+        if ((data.username || "").toLowerCase() === "bunny") {
+          const adminBtn = document.createElement("button");
+          adminBtn.textContent = "Administration";
+          adminBtn.onclick = () => location.href = "admin.html";
+          document.getElementById("navBar").appendChild(adminBtn);
+        }
       }
+    });
+
+    uploadInput.addEventListener("change", async (e) => {
+      const file = e.target.files[0];
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        pfpImg.src = reader.result;
+      };
+      if (file) reader.readAsDataURL(file);
     });
 
     window.saveProfile = async function () {
       const displayName = displayNameInput.value.trim();
-      let imageData = pfpImg.src;
-
-      if (pfpInput.files.length > 0) {
-        const file = pfpInput.files[0];
-        imageData = await toBase64(file);
-        pfpImg.src = imageData;
-      }
-
-      if (!currentUser) return;
+      const aboutMe = aboutMeInput.value.trim();
+      const profilePicture = pfpImg.src;
 
       await setDoc(doc(db, "users", currentUser.uid), {
         email: currentUser.email,
-        displayName: displayName || "User",
-        profilePicture: imageData
-      });
+        displayName,
+        profilePicture,
+        aboutMe,
+        username: usernameInput.value || "unknown"
+      }, { merge: true });
 
-      alert("Profile saved!");
+      alert("Profile updated!");
     };
 
     window.logOut = function () {
@@ -151,15 +183,6 @@
         window.location.href = "login.html";
       });
     };
-
-    function toBase64(file) {
-      return new Promise((resolve, reject) => {
-        const reader = new FileReader();
-        reader.onload = () => resolve(reader.result);
-        reader.onerror = reject;
-        reader.readAsDataURL(file);
-      });
-    }
   </script>
 </body>
 </html>
