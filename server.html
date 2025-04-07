@@ -5,14 +5,54 @@
   <title>Server</title>
   <style>
     body {
-      font-family: Arial, sans-serif;
       margin: 0;
+      font-family: Arial, sans-serif;
+      display: flex;
+      height: 100vh;
       background: #f5f5f5;
     }
 
+    .sidebar {
+      width: 250px;
+      background: #2f3136;
+      color: white;
+      padding: 10px;
+      box-sizing: border-box;
+    }
+
+    .sidebar button {
+      width: 100%;
+      margin: 5px 0;
+      padding: 10px;
+      background: #5865F2;
+      border: none;
+      color: white;
+      font-weight: bold;
+      border-radius: 5px;
+      cursor: pointer;
+    }
+
+    .channel-list {
+      margin-top: 20px;
+    }
+
+    .channel {
+      padding: 8px;
+      background: #40444b;
+      margin: 4px 0;
+      border-radius: 4px;
+      cursor: pointer;
+    }
+
+    .main {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+    }
+
     #chat {
+      flex: 1;
       padding: 20px;
-      max-height: 80vh;
       overflow-y: auto;
     }
 
@@ -46,9 +86,6 @@
     }
 
     #messageForm {
-      position: fixed;
-      bottom: 0;
-      width: 100%;
       display: flex;
       padding: 10px;
       background: #fff;
@@ -72,35 +109,58 @@
       cursor: pointer;
     }
 
-    button:hover {
-      background: #4752c4;
+    .members {
+      width: 200px;
+      background: #e0e0e0;
+      padding: 10px;
+      overflow-y: auto;
+    }
+
+    .member {
+      padding: 8px;
+      margin: 5px 0;
+      background: white;
+      border-radius: 5px;
+      cursor: pointer;
+    }
+
+    .online {
+      color: green;
+    }
+
+    .offline {
+      color: gray;
     }
   </style>
 </head>
 <body>
 
-  <div id="chat">Loading messages...</div>
+  <div class="sidebar">
+    <button onclick="addChannel()">+ Add Text Channel</button>
+    <button onclick="inviteToServer()">Invite to Server</button>
+    <div class="channel-list" id="channelList"></div>
+  </div>
 
-  <form id="messageForm">
-    <input id="messageInput" placeholder="Type a message..." autocomplete="off" />
-    <button type="submit">Send</button>
-  </form>
+  <div class="main">
+    <div id="chat">Loading messages...</div>
+    <form id="messageForm">
+      <input id="messageInput" placeholder="Type a message..." autocomplete="off" />
+      <button type="submit">Send</button>
+    </form>
+  </div>
+
+  <div class="members" id="memberList">
+    <h4>Members</h4>
+  </div>
 
   <script type="module">
     import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.0/firebase-app.js";
     import {
-      getFirestore,
-      doc,
-      getDoc,
-      collection,
-      addDoc,
-      query,
-      orderBy,
-      onSnapshot
+      getFirestore, doc, getDoc, updateDoc, deleteDoc,
+      collection, addDoc, query, orderBy, onSnapshot, getDocs
     } from "https://www.gstatic.com/firebasejs/11.6.0/firebase-firestore.js";
     import {
-      getAuth,
-      onAuthStateChanged
+      getAuth, onAuthStateChanged
     } from "https://www.gstatic.com/firebasejs/11.6.0/firebase-auth.js";
 
     const firebaseConfig = {
@@ -119,17 +179,67 @@
     const chat = document.getElementById("chat");
     const form = document.getElementById("messageForm");
     const input = document.getElementById("messageInput");
+    const channelList = document.getElementById("channelList");
+    const memberList = document.getElementById("memberList");
 
-    let currentUser, serverId;
+    let currentUser, serverId, serverData, currentChannel = "general";
 
     onAuthStateChanged(auth, async (user) => {
       if (!user) return location.href = "login.html";
       currentUser = user;
-
       serverId = sessionStorage.getItem("currentServer");
       if (!serverId) return alert("No server selected.");
 
-      const q = query(collection(db, "servers", serverId, "messages"), orderBy("timestamp"));
+      const serverSnap = await getDoc(doc(db, "servers", serverId));
+      serverData = serverSnap.data();
+
+      loadChannels();
+      loadMembers();
+      loadMessages(currentChannel);
+    });
+
+    async function loadChannels() {
+      const channelsRef = collection(db, "servers", serverId, "channels");
+      const channelsSnap = await getDocs(channelsRef);
+
+      channelList.innerHTML = "";
+      channelsSnap.forEach(c => {
+        const div = document.createElement("div");
+        div.className = "channel";
+        div.textContent = "#" + c.id;
+        div.onclick = () => {
+          currentChannel = c.id;
+          loadMessages(currentChannel);
+        };
+        channelList.appendChild(div);
+      });
+    }
+
+    async function loadMembers() {
+      const serverSnap = await getDoc(doc(db, "servers", serverId));
+      const members = serverSnap.data().members || [];
+
+      memberList.innerHTML = "<h4>Members</h4>";
+      for (const uid of members) {
+        const userSnap = await getDoc(doc(db, "users", uid));
+        if (!userSnap.exists()) continue;
+        const user = userSnap.data();
+
+        const div = document.createElement("div");
+        div.className = "member";
+        div.textContent = user.displayName || user.username;
+        div.onclick = () => {
+          sessionStorage.setItem("viewingUser", uid);
+          window.location.href = "user.html";
+        };
+        div.classList.add(uid === user.uid ? "online" : "offline");
+
+        memberList.appendChild(div);
+      }
+    }
+
+    async function loadMessages(channel) {
+      const q = query(collection(db, "servers", serverId, "channels", channel, "messages"), orderBy("timestamp"));
       onSnapshot(q, async (snapshot) => {
         chat.innerHTML = "";
         for (const docSnap of snapshot.docs) {
@@ -148,14 +258,14 @@
         }
         chat.scrollTop = chat.scrollHeight;
       });
-    });
+    }
 
     form.addEventListener("submit", async (e) => {
       e.preventDefault();
       const text = input.value.trim();
       if (!text || !currentUser || !serverId) return;
 
-      await addDoc(collection(db, "servers", serverId, "messages"), {
+      await addDoc(collection(db, "servers", serverId, "channels", currentChannel, "messages"), {
         text,
         sender: currentUser.uid,
         timestamp: new Date()
@@ -163,6 +273,24 @@
 
       input.value = "";
     });
+
+    window.addChannel = async function () {
+      if (currentUser.uid !== serverData.owner) {
+        return alert("Only the server owner can add channels.");
+      }
+
+      const name = prompt("Enter new channel name:");
+      if (!name) return;
+
+      await setDoc(doc(db, "servers", serverId, "channels", name), {});
+      alert("Channel added!");
+      loadChannels();
+    };
+
+    window.inviteToServer = function () {
+      const code = serverData.inviteCode || "default-code";
+      prompt("Share this invite code to join:", code);
+    };
 
     document.addEventListener("click", (e) => {
       if (e.target.matches(".pfp, .username")) {
