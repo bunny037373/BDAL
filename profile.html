@@ -129,7 +129,7 @@
     let currentUser;
 
     onAuthStateChanged(auth, async (user) => {
-      if (!user) return location.href = "login.html";
+      if (!user) return location.href = "Login.html";
       currentUser = user;
 
       const docRef = doc(db, "users", user.uid);
