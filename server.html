@@ -151,6 +151,18 @@
       font-weight: bold;
       margin-left: 5px;
     }
+
+    .msg-controls {
+      float: right;
+    }
+
+    .msg-controls button {
+      margin-left: 5px;
+      background: none;
+      color: #888;
+      border: none;
+      cursor: pointer;
+    }
   </style>
 </head>
 <body>
@@ -161,6 +173,7 @@
       <div class="server-name" id="serverName">Loading...</div>
     </div>
     <button id="addChannelBtn">+ Add Text Channel</button>
+    <button id="settingsBtn">Server Settings</button>
     <button onclick="inviteToServer()">Invite to Server</button>
     <div id="channelList"></div>
   </div>
@@ -209,6 +222,7 @@
     const serverName = document.getElementById("serverName");
     const serverIcon = document.getElementById("serverIcon");
     const addChannelBtn = document.getElementById("addChannelBtn");
+    const settingsBtn = document.getElementById("settingsBtn");
 
     onAuthStateChanged(auth, async (user) => {
       if (!user) return location.href = "login.html";
@@ -225,6 +239,7 @@
 
       if (currentUser.uid !== serverData.owner) {
         addChannelBtn.style.display = "none";
+        settingsBtn.style.display = "none";
       }
 
       loadChannels();
@@ -254,6 +269,7 @@
         chat.innerHTML = "";
         for (const docSnap of snap.docs) {
           const msg = docSnap.data();
+          const id = docSnap.id;
           const userDoc = await getDoc(doc(db, "users", msg.sender));
           const user = userDoc.data() || {};
 
@@ -263,9 +279,17 @@
           const date = msg.timestamp?.toDate ? msg.timestamp.toDate() : new Date();
           const time = new Date(date).toLocaleString();
 
+          let controls = "";
+          if (msg.sender === currentUser.uid) {
+            controls = `<button onclick="editMsg('${id}')">✎</button><button onclick="delMsg('${id}')">🗑️</button>`;
+          } else if (currentUser.uid === serverData.owner) {
+            controls = `<button onclick="delMsg('${id}')">🗑️</button>`;
+          }
+
           msgDiv.innerHTML = `
             <img src="${user.profilePicture || 'default.png'}" class="pfp" data-uid="${msg.sender}">
             <span class="username" data-uid="${msg.sender}">${user.displayName || user.username}${user.verified ? ' <span class="verified-check">✔</span>' : ''}</span>
+            <div class="msg-controls">${controls}</div>
             <span class="text">${msg.text}</span>
             <div class="timestamp">${time}</div>
           `;
@@ -289,6 +313,20 @@
       messageInput.value = "";
     };
 
+    window.delMsg = async function (id) {
+      await deleteDoc(doc(db, "servers", serverId, "channels", currentChannel, "messages", id));
+    };
+
+    window.editMsg = async function (id) {
+      const ref = doc(db, "servers", serverId, "channels", currentChannel, "messages", id);
+      const snap = await getDoc(ref);
+      const old = snap.data().text;
+      const update = prompt("Edit message:", old);
+      if (update && update !== old) {
+        await updateDoc(ref, { text: update });
+      }
+    };
+
     window.inviteToServer = async function () {
       if (currentUser.uid === serverData.owner && serverData.verified) {
         const custom = prompt("Enter your custom invite code:");
@@ -306,6 +344,24 @@
       if (!name) return;
       await setDoc(doc(db, "servers", serverId, "channels", name), {});
       loadChannels();
+    };
+
+    settingsBtn.onclick = async () => {
+      const newName = prompt("Edit server name:", serverData.name || "");
+      if (newName) await updateDoc(doc(db, "servers", serverId), { name: newName });
+      const input = document.createElement("input");
+      input.type = "file";
+      input.accept = "image/*";
+      input.onchange = async () => {
+        const file = input.files[0];
+        const reader = new FileReader();
+        reader.onload = async () => {
+          await updateDoc(doc(db, "servers", serverId), { serverIcon: reader.result });
+          location.reload();
+        };
+        reader.readAsDataURL(file);
+      };
+      input.click();
     };
 
     async function loadMembers() {
