@@ -7,7 +7,7 @@
     body {
       font-family: Arial, sans-serif;
       text-align: center;
-      background: #f4f4f4;
+      background-color: #f0f0f0;
       padding-top: 40px;
     }
 
@@ -15,22 +15,25 @@
       width: 120px;
       height: 120px;
       border-radius: 50%;
-      object-fit: cover;
       border: 2px solid #ccc;
+      object-fit: cover;
+    }
+
+    h2 {
+      margin-bottom: 5px;
     }
 
     .badges {
-      display: inline-block;
-      margin-left: 8px;
-      font-size: 14px;
+      margin-bottom: 10px;
     }
 
     .badge {
       display: inline-block;
-      padding: 2px 6px;
-      border-radius: 4px;
+      padding: 3px 8px;
+      font-size: 14px;
+      border-radius: 6px;
+      margin: 0 5px;
       color: white;
-      margin-left: 5px;
     }
 
     .verified { background: green; }
@@ -38,38 +41,38 @@
     .developer { background: blue; }
 
     .about {
-      max-width: 500px;
+      background: white;
       margin: 20px auto;
-      background: #fff;
       padding: 15px;
-      border-radius: 8px;
-      border: 1px solid #ddd;
+      border-radius: 10px;
+      border: 1px solid #ccc;
+      width: 90%;
+      max-width: 400px;
       box-shadow: 0 2px 5px rgba(0,0,0,0.1);
-      font-size: 16px;
     }
 
     .buttons button {
-      margin: 5px;
+      margin: 8px;
       padding: 10px 20px;
       font-size: 16px;
       border: none;
       border-radius: 6px;
-      cursor: pointer;
-      background-color: #5865F2;
+      background: #5865F2;
       color: white;
+      cursor: pointer;
     }
 
     .buttons button.disabled {
-      background-color: gray;
+      background: gray;
       cursor: not-allowed;
     }
   </style>
 </head>
 <body>
-  <h2>User Profile</h2>
+  <h2 id="displayName">Display Name</h2>
+  <div id="username">@username</div>
+  <div class="badges" id="badges"></div>
   <img id="pfp" src="default.png" alt="Profile Picture">
-  <h3 id="displayName">Display Name</h3>
-  <div id="username">@username <span class="badges" id="badges"></span></div>
   <div class="about" id="aboutMe">Loading bio...</div>
 
   <div class="buttons">
@@ -112,21 +115,44 @@
     const username = document.getElementById("username");
     const aboutMe = document.getElementById("aboutMe");
     const badges = document.getElementById("badges");
+
     const friendBtn = document.getElementById("friendBtn");
     const messageBtn = document.getElementById("messageBtn");
     const reportBtn = document.getElementById("reportBtn");
     const blockBtn = document.getElementById("blockBtn");
 
-    let currentUser, targetUserId;
+    let currentUser, targetUser;
 
     onAuthStateChanged(auth, async (user) => {
       if (!user) return location.href = "login.html";
       currentUser = user.uid;
 
-      targetUserId = sessionStorage.getItem("viewingUser");
-      if (!targetUserId) return alert("Error: No user selected.");
+      targetUser = sessionStorage.getItem("viewingUser");
+      if (!targetUser) return alert("No user selected.");
 
-      if (currentUser === targetUserId) {
+      const userSnap = await getDoc(doc(db, "users", targetUser));
+      const mySnap = await getDoc(doc(db, "users", currentUser));
+
+      if (!userSnap.exists()) return alert("User not found.");
+      const uData = userSnap.data();
+      const me = mySnap.data();
+
+      displayName.textContent = uData.displayName || "Unnamed";
+      username.textContent = "@" + (uData.username || "unknown");
+      pfp.src = uData.profilePicture || "default.png";
+      aboutMe.textContent = uData.aboutMe || "No bio available.";
+
+      // Show badges
+      if (uData.verified) badges.innerHTML += `<span class="badge verified">✔ Verified</span>`;
+      if (uData.role === "admin") badges.innerHTML += `<span class="badge admin">Admin</span>`;
+      if (uData.role === "developer") badges.innerHTML += `<span class="badge developer">Developer</span>`;
+
+      const isYou = currentUser === targetUser;
+      const isBlocked = me.blocked?.includes(targetUser);
+      const isFriend = me.friends?.includes(targetUser);
+      const pending = me.friendRequestsSent?.includes(targetUser);
+
+      if (isYou) {
         friendBtn.classList.add("disabled");
         messageBtn.classList.add("disabled");
         reportBtn.classList.add("disabled");
@@ -134,89 +160,74 @@
         return;
       }
 
-      const targetDoc = await getDoc(doc(db, "users", targetUserId));
-      if (!targetDoc.exists()) return alert("User not found.");
-      const userData = targetDoc.data();
-
-      pfp.src = userData.profilePicture || "default.png";
-      displayName.textContent = userData.displayName || "Unnamed";
-      username.textContent = "@" + (userData.username || "unknown");
-
-      aboutMe.textContent = userData.aboutMe || "No bio provided.";
-
-      // Badges
-      if (userData.verified) badges.innerHTML += `<span class="badge verified">✔ Verified</span>`;
-      if (userData.role === "admin") badges.innerHTML += `<span class="badge admin">Admin</span>`;
-      if (userData.role === "developer") badges.innerHTML += `<span class="badge developer">Dev</span>`;
-
-      // Relationship logic
-      const currentSnap = await getDoc(doc(db, "users", currentUser));
-      const currentData = currentSnap.data();
-
-      const isBlocked = currentData.blocked?.includes(targetUserId);
-      const isFriend = currentData.friends?.includes(targetUserId);
-      const pending = currentData.friendRequestsSent?.includes(targetUserId);
-
       if (isBlocked) {
         friendBtn.textContent = "Blocked";
-        friendBtn.classList.add("disabled");
-        messageBtn.classList.add("disabled");
-        reportBtn.classList.add("disabled");
+        friendBtn.disabled = true;
+        messageBtn.disabled = true;
+        reportBtn.disabled = true;
         blockBtn.textContent = "Unblock";
-        return;
-      }
-
-      if (isFriend) {
-        friendBtn.textContent = "Unfriend";
-      } else if (pending) {
-        friendBtn.textContent = "Pending...";
-        friendBtn.classList.add("disabled");
-        friendBtn.disabled = true;
       } else {
-        friendBtn.textContent = "Add Friend";
+        if (isFriend) {
+          friendBtn.textContent = "Unfriend";
+        } else if (pending) {
+          friendBtn.textContent = "Pending...";
+          friendBtn.disabled = true;
+        } else {
+          friendBtn.textContent = "Add Friend";
+        }
+        blockBtn.textContent = "Block";
       }
 
-      // Button functionality
+      // Actions
       friendBtn.onclick = async () => {
-        if (friendBtn.classList.contains("disabled")) return;
-        await updateDoc(doc(db, "users", currentUser), {
-          friendRequestsSent: arrayUnion(targetUserId)
-        });
-        await updateDoc(doc(db, "users", targetUserId), {
-          friendRequests: arrayUnion(currentUser)
-        });
-        friendBtn.textContent = "Pending...";
-        friendBtn.disabled = true;
-      };
-
-      messageBtn.onclick = () => {
-        if (!isFriend) {
-          alert("System Error: You are not friended with this person.");
-          return;
+        if (friendBtn.disabled) return;
+        if (friendBtn.textContent === "Unfriend") {
+          await updateDoc(doc(db, "users", currentUser), {
+            friends: arrayRemove(targetUser)
+          });
+          await updateDoc(doc(db, "users", targetUser), {
+            friends: arrayRemove(currentUser)
+          });
+          location.reload();
+        } else {
+          await updateDoc(doc(db, "users", currentUser), {
+            friendRequestsSent: arrayUnion(targetUser)
+          });
+          await updateDoc(doc(db, "users", targetUser), {
+            friendRequests: arrayUnion(currentUser)
+          });
+          friendBtn.textContent = "Pending...";
+          friendBtn.disabled = true;
         }
-        sessionStorage.setItem("dmUser", targetUserId);
-        location.href = "messaging.html";
-      };
-
-      reportBtn.onclick = async () => {
-        await updateDoc(doc(db, "reports", targetUserId), {
-          reportedBy: arrayUnion(currentUser)
-        });
-        alert("Report sent.");
       };
 
       blockBtn.onclick = async () => {
         if (isBlocked) {
           await updateDoc(doc(db, "users", currentUser), {
-            blocked: arrayRemove(targetUserId)
+            blocked: arrayRemove(targetUser)
           });
-          location.reload();
         } else {
           await updateDoc(doc(db, "users", currentUser), {
-            blocked: arrayUnion(targetUserId)
+            blocked: arrayUnion(targetUser)
           });
-          location.reload();
         }
+        location.reload();
+      };
+
+      reportBtn.onclick = async () => {
+        await updateDoc(doc(db, "reports", targetUser), {
+          reportedBy: arrayUnion(currentUser)
+        });
+        alert("Report sent.");
+      };
+
+      messageBtn.onclick = () => {
+        if (!isFriend) {
+          alert("System Error: we’re sorry but you are not friended to this person so you cannot message them until you add them.");
+          return;
+        }
+        sessionStorage.setItem("dmUser", targetUser);
+        location.href = "messaging.html";
       };
     });
   </script>
