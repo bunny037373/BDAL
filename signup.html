@@ -3,9 +3,60 @@
 <head>
   <meta charset="UTF-8">
   <title>Sign Up</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      text-align: center;
+      background: white;
+      margin: 0;
+      padding-top: 100px;
+    }
+
+    .form-container {
+      display: inline-block;
+      background: #f4f4f4;
+      padding: 30px;
+      border-radius: 10px;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.2);
+    }
+
+    input {
+      padding: 12px;
+      width: 250px;
+      font-size: 16px;
+      margin-bottom: 15px;
+      border: 1px solid #ccc;
+      border-radius: 6px;
+    }
+
+    button {
+      padding: 12px 24px;
+      font-size: 16px;
+      background-color: #5865F2;
+      color: white;
+      border: none;
+      border-radius: 6px;
+      cursor: pointer;
+    }
+
+    button:hover {
+      background-color: #4752c4;
+    }
+
+    .toggle-btn {
+      background-color: gray;
+      margin-bottom: 15px;
+    }
+  </style>
+
   <script type="module">
     import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.0/firebase-app.js";
     import { getAuth, createUserWithEmailAndPassword } from "https://www.gstatic.com/firebasejs/11.6.0/firebase-auth.js";
+    import {
+      getFirestore,
+      doc,
+      setDoc
+    } from "https://www.gstatic.com/firebasejs/11.6.0/firebase-firestore.js";
 
     const firebaseConfig = {
       apiKey: "AIzaSyCGGosrc7Ikl1xPnZri5sHuMvEUBB1f2YU",
@@ -19,26 +70,76 @@
 
     const app = initializeApp(firebaseConfig);
     const auth = getAuth(app);
+    const db = getFirestore(app);
 
-    window.signUp = function () {
+    let usernameOnlyMode = false;
+
+    window.toggleUsernameMode = function () {
+      usernameOnlyMode = !usernameOnlyMode;
+      document.getElementById("email").style.display = usernameOnlyMode ? "none" : "block";
+      document.getElementById("toggleModeBtn").textContent = usernameOnlyMode ? "Back to Email" : "Just Username";
+    };
+
+    window.signUp = async function () {
       const email = document.getElementById("email").value;
       const password = document.getElementById("password").value;
+      const username = document.getElementById("username").value.trim();
 
-      createUserWithEmailAndPassword(auth, email, password)
-        .then((userCredential) => {
+      if (!username) return alert("Please enter a username.");
+      if (!password) return alert("Please enter a password.");
+
+      if (usernameOnlyMode) {
+        const fakeEmail = username.toLowerCase() + "@placeholder.mail";
+        try {
+          const cred = await createUserWithEmailAndPassword(auth, fakeEmail, password);
+          await setDoc(doc(db, "users", cred.user.uid), {
+            username: username,
+            displayName: username,
+            email: "",
+            profilePicture: "",
+            aboutMe: "",
+            friends: [],
+            friendRequests: [],
+            friendRequestsSent: [],
+            blocked: []
+          });
           alert("Account created!");
-          window.location.href = "home.html";
-        })
-        .catch((error) => {
-          alert("Error: " + error.message);
-        });
+          location.href = "home.html";
+        } catch (err) {
+          alert("Error: " + err.message);
+        }
+      } else {
+        if (!email) return alert("Please enter an email.");
+        try {
+          const cred = await createUserWithEmailAndPassword(auth, email, password);
+          await setDoc(doc(db, "users", cred.user.uid), {
+            username: username,
+            displayName: username,
+            email: email,
+            profilePicture: "",
+            aboutMe: "",
+            friends: [],
+            friendRequests: [],
+            friendRequestsSent: [],
+            blocked: []
+          });
+          alert("Account created!");
+          location.href = "home.html";
+        } catch (err) {
+          alert("Error: " + err.message);
+        }
+      }
     };
   </script>
 </head>
 <body>
-  <h2>Sign Up</h2>
-  <input type="email" id="email" placeholder="Email" /><br><br>
-  <input type="password" id="password" placeholder="Password" /><br><br>
-  <button onclick="signUp()">Sign Up</button>
+  <div class="form-container">
+    <h2>Sign Up</h2>
+    <input type="text" id="username" placeholder="Username"><br>
+    <input type="email" id="email" placeholder="Email"><br>
+    <input type="password" id="password" placeholder="Password"><br>
+    <button onclick="signUp()">Sign Up</button><br><br>
+    <button id="toggleModeBtn" class="toggle-btn" onclick="toggleUsernameMode()">Just Username</button>
+  </div>
 </body>
 </html>
