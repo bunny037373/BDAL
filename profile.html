@@ -1,14 +1,15 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8">
-  <title>Your Profile</title>
+  <meta charset="UTF-8" />
+  <title>My Profile</title>
   <style>
     body {
       font-family: Arial, sans-serif;
+      background: #2c2f33;
+      color: white;
       text-align: center;
-      background: #f0f0f0;
-      padding-top: 40px;
+      padding: 50px;
     }
 
     img {
@@ -16,86 +17,67 @@
       height: 100px;
       border-radius: 50%;
       object-fit: cover;
-      border: 2px solid #ccc;
-      margin-bottom: 15px;
     }
 
-    input {
+    input, textarea, button {
       display: block;
       margin: 10px auto;
       padding: 10px;
       font-size: 16px;
-      width: 80%;
-      max-width: 300px;
     }
 
     button {
-      padding: 10px 20px;
-      font-size: 16px;
-      background-color: #5865F2;
+      background: #5865F2;
       color: white;
       border: none;
-      border-radius: 6px;
+      border-radius: 5px;
       cursor: pointer;
-      margin-top: 10px;
+    }
+
+    button:hover {
+      background: #4752c4;
     }
 
     .nav {
-      position: fixed;
-      bottom: 0;
-      width: 100%;
-      background: #202225;
-      display: flex;
-      justify-content: space-around;
-      padding: 15px 0;
+      margin-top: 30px;
     }
 
     .nav button {
-      font-size: 16px;
-      padding: 10px 20px;
+      margin: 5px;
+      background-color: #40444b;
     }
 
-    .verified-badge {
-      background-color: #1da1f2;
-      color: white;
-      border-radius: 50%;
-      padding: 3px 6px;
-      font-size: 14px;
-      margin-left: 5px;
+    .nav button:hover {
+      background-color: #2f3136;
     }
   </style>
 </head>
 <body>
-  <h2>User Profile</h2>
-  <p id="userDisplay">Loading...</p>
-
-  <img id="pfpImg" src="default.png" alt="Your Profile Picture"><br>
-  <input type="file" id="pfpInput" accept="image/*"><br>
-  <input type="text" id="displayName" placeholder="Display Name"><br>
-  <input type="text" id="username" placeholder="Username"><br>
-
+  <h1>My Profile</h1>
+  <img id="pfp" src="default.png" alt="Profile Picture" />
+  <input type="file" id="upload" accept="image/*" />
+  <input type="text" id="displayName" placeholder="Display Name" />
+  <input type="text" id="username" placeholder="Username" disabled />
+  <textarea id="bio" placeholder="Write your bio here..." rows="4" cols="50"></textarea>
   <button onclick="saveProfile()">Save Profile</button>
-  <button onclick="logOut()">Logout</button>
-  <button id="adminBtn" style="display:none;" onclick="location.href='admin.html'">Administration</button>
 
   <div class="nav">
+    <button onclick="location.href='friendlist.html'">Friends</button>
     <button onclick="location.href='home.html'">Home</button>
-    <button onclick="location.href='profile.html'">Profile</button>
   </div>
 
   <script type="module">
     import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.0/firebase-app.js";
-    import { getAuth, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/11.6.0/firebase-auth.js";
     import {
       getFirestore,
       doc,
       getDoc,
-      setDoc,
-      collection,
-      getDocs,
-      query,
-      where
+      updateDoc
     } from "https://www.gstatic.com/firebasejs/11.6.0/firebase-firestore.js";
+    import {
+      getAuth,
+      onAuthStateChanged
+    } from "https://www.gstatic.com/firebasejs/11.6.0/firebase-auth.js";
 
     const firebaseConfig = {
       apiKey: "AIzaSyCGGosrc7Ikl1xPnZri5sHuMvEUBB1f2YU",
@@ -107,102 +89,48 @@
     };
 
     const app = initializeApp(firebaseConfig);
-    const auth = getAuth(app);
     const db = getFirestore(app);
+    const auth = getAuth();
 
-    const userDisplay = document.getElementById("userDisplay");
-    const pfpImg = document.getElementById("pfpImg");
-    const displayNameInput = document.getElementById("displayName");
-    const usernameInput = document.getElementById("username");
-    const pfpInput = document.getElementById("pfpInput");
-    const adminBtn = document.getElementById("adminBtn");
-
-    let currentUser = null;
+    let currentUser;
 
     onAuthStateChanged(auth, async (user) => {
-      if (!user) {
-        window.location.href = "login.html";
-        return;
-      }
-
+      if (!user) return location.href = "login.html";
       currentUser = user;
-      sessionStorage.setItem("currentUser", user.uid);
-      userDisplay.textContent = `Logged in as: ${user.email}`;
 
-      const userDocRef = doc(db, "users", user.uid);
-      const userDoc = await getDoc(userDocRef);
-      if (userDoc.exists()) {
-        const data = userDoc.data();
-        if (data.profilePicture) pfpImg.src = data.profilePicture;
-        if (data.displayName) displayNameInput.value = data.displayName;
-        if (data.username) usernameInput.value = data.username;
+      const docRef = doc(db, "users", user.uid);
+      const docSnap = await getDoc(docRef);
 
-        // Show verified badge
-        if (data.verified === true) {
-          userDisplay.innerHTML += ` <span class="verified-badge">✔</span>`;
-        }
-
-        // Show admin button for "bunny"
-        if ((data.username || "").toLowerCase() === "bunny") {
-          adminBtn.style.display = "inline-block";
-        }
+      if (docSnap.exists()) {
+        const data = docSnap.data();
+        document.getElementById("displayName").value = data.displayName || "";
+        document.getElementById("username").value = data.username || "";
+        document.getElementById("bio").value = data.bio || "";
+        document.getElementById("pfp").src = data.pfp || "default.png";
       }
     });
 
-    window.saveProfile = async function () {
-      const displayName = displayNameInput.value.trim();
-      const username = usernameInput.value.trim().toLowerCase();
-      let imageData = pfpImg.src;
+    document.getElementById("upload").addEventListener("change", async (e) => {
+      const file = e.target.files[0];
+      const reader = new FileReader();
+      reader.onloadend = async () => {
+        document.getElementById("pfp").src = reader.result;
+      };
+      if (file) reader.readAsDataURL(file);
+    });
 
-      if (!username) {
-        alert("Username is required.");
-        return;
-      }
+    async function saveProfile() {
+      const displayName = document.getElementById("displayName").value.trim();
+      const bio = document.getElementById("bio").value.trim();
+      const pfp = document.getElementById("pfp").src;
 
-      if (pfpInput.files.length > 0) {
-        const file = pfpInput.files[0];
-        imageData = await toBase64(file);
-        pfpImg.src = imageData;
-      }
-
-      // Check if username is taken (except by yourself)
-      const usersRef = collection(db, "users");
-      const q = query(usersRef, where("username", "==", username));
-      const snapshot = await getDocs(q);
-
-      if (!snapshot.empty) {
-        const takenByAnother = snapshot.docs.some(docSnap => docSnap.id !== currentUser.uid);
-        if (takenByAnother) {
-          alert("This username is already taken. Please choose another.");
-          return;
-        }
-      }
-
-      await setDoc(doc(db, "users", currentUser.uid), {
-        email: currentUser.email,
-        displayName: displayName || "User",
-        username: username,
-        profilePicture: imageData,
-        verified: false // preserve or overwrite, admin controls this field
+      await updateDoc(doc(db, "users", currentUser.uid), {
+        displayName,
+        bio,
+        pfp
       });
 
-      alert("Profile saved!");
-    };
-
-    window.logOut = function () {
-      signOut(auth).then(() => {
-        sessionStorage.clear();
-        window.location.href = "login.html";
-      });
-    };
-
-    function toBase64(file) {
-      return new Promise((resolve, reject) => {
-        const reader = new FileReader();
-        reader.onload = () => resolve(reader.result);
-        reader.onerror = reject;
-        reader.readAsDataURL(file);
-      });
+      alert("Profile updated!");
     }
   </script>
 </body>
