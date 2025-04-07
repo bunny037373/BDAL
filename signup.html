@@ -45,7 +45,7 @@
 
     .toggle-btn {
       background-color: gray;
-      margin-bottom: 15px;
+      margin-top: 10px;
     }
   </style>
 
@@ -55,7 +55,11 @@
     import {
       getFirestore,
       doc,
-      setDoc
+      setDoc,
+      collection,
+      getDocs,
+      query,
+      where
     } from "https://www.gstatic.com/firebasejs/11.6.0/firebase-firestore.js";
 
     const firebaseConfig = {
@@ -80,6 +84,13 @@
       document.getElementById("toggleModeBtn").textContent = usernameOnlyMode ? "Back to Email" : "Just Username";
     };
 
+    async function usernameExists(username) {
+      const lower = username.toLowerCase();
+      const q = query(collection(db, "users"), where("username", "==", lower));
+      const snap = await getDocs(q);
+      return !snap.empty;
+    }
+
     window.signUp = async function () {
       const email = document.getElementById("email").value;
       const password = document.getElementById("password").value;
@@ -88,46 +99,37 @@
       if (!username) return alert("Please enter a username.");
       if (!password) return alert("Please enter a password.");
 
-      if (usernameOnlyMode) {
-        const fakeEmail = username.toLowerCase() + "@placeholder.mail";
-        try {
-          const cred = await createUserWithEmailAndPassword(auth, fakeEmail, password);
-          await setDoc(doc(db, "users", cred.user.uid), {
-            username: username,
-            displayName: username,
-            email: "",
-            profilePicture: "",
-            aboutMe: "",
-            friends: [],
-            friendRequests: [],
-            friendRequestsSent: [],
-            blocked: []
-          });
-          alert("Account created!");
-          location.href = "home.html";
-        } catch (err) {
-          alert("Error: " + err.message);
+      const taken = await usernameExists(username);
+      if (taken) return alert("Username already taken. Please choose another.");
+
+      const lowerUsername = username.toLowerCase();
+      const userData = {
+        username: lowerUsername,
+        displayName: username,
+        email: usernameOnlyMode ? "" : email,
+        profilePicture: "",
+        aboutMe: "",
+        friends: [],
+        friendRequests: [],
+        friendRequestsSent: [],
+        blocked: []
+      };
+
+      try {
+        let cred;
+        if (usernameOnlyMode) {
+          const fakeEmail = lowerUsername + "@placeholder.mail";
+          cred = await createUserWithEmailAndPassword(auth, fakeEmail, password);
+        } else {
+          if (!email) return alert("Please enter an email.");
+          cred = await createUserWithEmailAndPassword(auth, email, password);
         }
-      } else {
-        if (!email) return alert("Please enter an email.");
-        try {
-          const cred = await createUserWithEmailAndPassword(auth, email, password);
-          await setDoc(doc(db, "users", cred.user.uid), {
-            username: username,
-            displayName: username,
-            email: email,
-            profilePicture: "",
-            aboutMe: "",
-            friends: [],
-            friendRequests: [],
-            friendRequestsSent: [],
-            blocked: []
-          });
-          alert("Account created!");
-          location.href = "home.html";
-        } catch (err) {
-          alert("Error: " + err.message);
-        }
+
+        await setDoc(doc(db, "users", cred.user.uid), userData);
+        alert("Account created!");
+        location.href = "home.html";
+      } catch (err) {
+        alert("Error: " + err.message);
       }
     };
   </script>
